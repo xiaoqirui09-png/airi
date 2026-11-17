@@ -208,6 +208,28 @@ export const useMemoryEmbeddingStore = defineStore('memory-embedding', () => {
     }
   }
 
+  /**
+   * Embeds one query text into a unit vector, for consumers that score candidates themselves (active recall). Resolves
+   * to undefined on any failure or timeout, so callers degrade to their non-semantic path. Unlike `recallSemantic` this
+   * does not require any stored vectors, only a loaded model.
+   */
+  async function embedQuery(text: string, signal?: AbortSignal): Promise<Float32Array | undefined> {
+    if (!enabled.value || !text.trim())
+      return undefined
+    const timeout = AbortSignal.timeout(timeoutMs.value)
+    const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
+    try {
+      const embedderInstance = await ensureEmbedder()
+      const [vector] = await embedderInstance.embed([text], combined)
+      return vector
+    }
+    catch (error) {
+      if (!combined.aborted)
+        console.warn('[memory-embedding] Query embedding failed:', errorMessageFrom(error))
+      return undefined
+    }
+  }
+
   /** Turns embedding off without deleting facts. Vectors stay in their store for when it is enabled again. */
   function disable(): void {
     enabled.value = false
@@ -265,6 +287,7 @@ export const useMemoryEmbeddingStore = defineStore('memory-embedding', () => {
     scheduleVectors,
     backfill,
     recallSemantic,
+    embedQuery,
     disable,
     close,
     clearVectors,

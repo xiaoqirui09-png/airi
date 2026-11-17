@@ -16,6 +16,9 @@ const { cards } = storeToRefs(useAiriCardStore())
 
 const KEY = 'settings.pages.modules.memory-long-term.memories'
 
+/** Only pending items can be accepted or rejected in bulk; general and active ones are unaffected. */
+const pendingCount = computed(() => memory.pendingCount)
+
 /** General memories first, then each character card, and any other card id that kept a memory. */
 const groups = computed(() => {
   const personas = new Map<string, string>()
@@ -41,6 +44,14 @@ function remove(entry: MemoryEntry) {
     <p :class="['text-sm', 'text-neutral-500 dark:text-neutral-400']">
       {{ t(`${KEY}.description`) }}
     </p>
+
+    <div v-if="pendingCount > 1" :class="['flex', 'flex-wrap', 'items-center', 'gap-2', 'rounded-lg', 'bg-neutral-50 dark:bg-neutral-800/60', 'px-3', 'py-2.5']">
+      <span :class="['min-w-0 flex-1', 'text-sm', 'text-neutral-600 dark:text-neutral-300']">
+        {{ t(`${KEY}.pending-bulk`, { count: pendingCount }) }}
+      </span>
+      <Button size="sm" variant="primary" :label="t(`${KEY}.accept-all`)" @click="memory.acceptAll()" />
+      <Button size="sm" :label="t(`${KEY}.reject-all`)" @click="memory.rejectAll()" />
+    </div>
 
     <section
       v-for="group in groups"

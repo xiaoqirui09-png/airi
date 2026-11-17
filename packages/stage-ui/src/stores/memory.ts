@@ -346,6 +346,37 @@ export const useMemoryStore = defineStore('memory', () => {
     return true
   }
 
+  /**
+   * Accepts every pending candidate on the card, one after another. Each accept archives what its candidate replaces,
+   * so a batch of replacements takes effect together. Ids are captured first because accepting changes `entries`.
+   */
+  async function acceptAll(): Promise<number> {
+    const ids = entries.value.filter(entry => entry.status === 'pending').map(entry => entry.id)
+    for (const id of ids)
+      await accept({ id })
+    return ids.length
+  }
+
+  /** Rejects every pending candidate on the card. None of them ever reached recall, so no fact disappears from a reply. */
+  async function rejectAll(): Promise<number> {
+    const ids = entries.value.filter(entry => entry.status === 'pending').map(entry => entry.id)
+    for (const id of ids)
+      await reject({ id })
+    return ids.length
+  }
+
+  /**
+   * Undoes every automatic change in the trail. The trail is newest-first, and undoing means restoring the `before`
+   * snapshot, so it must run in that order: the newest action is unwound first, then the one before it. Ids are captured
+   * from a snapshot because each undo appends a restore log and re-reads the trail.
+   */
+  async function undoAll(): Promise<number> {
+    const ids = auditLogs.value.map(log => log.id)
+    for (const id of ids)
+      await undoAudit(id)
+    return ids.length
+  }
+
   async function resetState() {
     enabled.reset()
     recallEnabled.reset()
@@ -398,8 +429,11 @@ export const useMemoryStore = defineStore('memory', () => {
     archiveEntry,
     accept,
     reject,
+    acceptAll,
+    rejectAll,
     runDecay,
     undoAudit,
+    undoAll,
     recordAccess,
     makeGeneral,
     forget,

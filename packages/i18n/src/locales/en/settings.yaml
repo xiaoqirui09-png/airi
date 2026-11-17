@@ -1254,6 +1254,7 @@ pages:
           title: Memory activity
           description: What the character changed on its own, and what you can take back.
         undo: Undo
+        undo-all: Undo all
         action:
           create: Saved
           merge: Merged
@@ -1271,6 +1272,9 @@ pages:
         pending: Waits for you. It reaches no reply until you accept it.
         accept: Accept
         reject: Reject
+        accept-all: Accept all
+        reject-all: Reject all
+        pending-bulk: '{count} memories wait for you.'
         superseded: Replaced an older memory that you have not accepted yet.
         entry:
           title: Memories
@@ -1290,6 +1294,18 @@ pages:
       semantic-weight-description: How much a meaning match counts against a keyword match when memories are ranked.
       semantic-backfill: Compute missing vectors
       semantic-clear: Clear all vectors
+      proactive: Remember on her own
+      proactive-description: Every so often, without being asked, she brings up something she remembers. Off by default.
+      proactive-probability: Chance per turn
+      proactive-probability-description: How likely she is to recall something on any turn that qualifies.
+      proactive-interval: Minimum turns between recalls
+      proactive-interval-description: She will not bring up an unprompted memory more often than this.
+      proactive-max-chars: Hint length
+      proactive-max-chars-description: How much of a remembered fact reaches the reply.
+      proactive-threshold: Relevance floor
+      proactive-threshold-description: With semantic recall on, she stays quiet unless a memory is this close to the conversation.
+      proactive-hint-related: With semantic recall on, she only brings up memories related to the current conversation.
+      proactive-hint-simple: Without semantic recall, she picks an important memory at random. Turn on semantic recall for related memories.
       recall_budget: Memory text limit
       recall_budget-description: The recalled memories stop at this many characters. A lower limit leaves more room for the conversation.
       recall_top_n: Most memories per message

@@ -2,6 +2,7 @@
 import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { useMemoryEmbeddingStore } from '@proj-airi/stage-ui/stores/memory-embedding'
 import { useMemoryExtractStore } from '@proj-airi/stage-ui/stores/memory-extract'
+import { useMemoryProactiveStore } from '@proj-airi/stage-ui/stores/memory-proactive'
 import { FieldCheckbox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted } from 'vue'
@@ -13,6 +14,14 @@ const { enabled, recallEnabled, recallTopN, recallBudgetChars, decayHalfLifeDays
 const { autoExtractEnabled, autoExtractMode } = storeToRefs(useMemoryExtractStore())
 const embeddingStore = useMemoryEmbeddingStore()
 const { enabled: semanticEnabled, recallWeight, vectorCount, ready: semanticReady, failure: semanticFailure } = storeToRefs(embeddingStore)
+const proactiveStore = useMemoryProactiveStore()
+const {
+  enabled: proactiveEnabled,
+  probability: proactiveProbability,
+  minInterval: proactiveMinInterval,
+  maxChars: proactiveMaxChars,
+  relevanceThreshold: proactiveThreshold,
+} = storeToRefs(proactiveStore)
 
 const KEY = 'settings.pages.modules.memory-long-term'
 
@@ -68,6 +77,18 @@ const modeOptions = computed(() => [
             {{ t(`${KEY}.semantic-clear`) }}
           </button>
         </div>
+      </template>
+    </div>
+    <div v-if="enabled" :class="['flex flex-col', 'gap-4', 'rounded-xl', 'bg-neutral-100 dark:bg-neutral-900', 'p-4']">
+      <FieldCheckbox v-model="proactiveEnabled" :label="t(`${KEY}.proactive`)" :description="t(`${KEY}.proactive-description`)" />
+      <template v-if="proactiveEnabled">
+        <FieldRange v-model="proactiveProbability" as="div" :min="0" :max="1" :step="0.05" :default-value="0.15" :label="t(`${KEY}.proactive-probability`)" :description="t(`${KEY}.proactive-probability-description`)" />
+        <FieldRange v-model="proactiveMinInterval" as="div" :min="1" :max="40" :step="1" :default-value="8" :label="t(`${KEY}.proactive-interval`)" :description="t(`${KEY}.proactive-interval-description`)" />
+        <FieldRange v-model="proactiveMaxChars" as="div" :min="40" :max="400" :step="10" :default-value="120" :label="t(`${KEY}.proactive-max-chars`)" :description="t(`${KEY}.proactive-max-chars-description`)" />
+        <FieldRange v-model="proactiveThreshold" as="div" :min="0" :max="1" :step="0.05" :default-value="0.35" :label="t(`${KEY}.proactive-threshold`)" :description="t(`${KEY}.proactive-threshold-description`)" />
+        <p :class="['text-xs', 'text-neutral-500 dark:text-neutral-400']">
+          {{ semanticEnabled ? t(`${KEY}.proactive-hint-related`) : t(`${KEY}.proactive-hint-simple`) }}
+        </p>
       </template>
     </div>
     <div v-if="enabled" :class="['flex flex-col', 'gap-4', 'rounded-xl', 'bg-neutral-100 dark:bg-neutral-900', 'p-4']">

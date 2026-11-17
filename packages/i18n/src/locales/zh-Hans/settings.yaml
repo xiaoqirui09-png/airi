@@ -1175,6 +1175,7 @@ pages:
           title: 记忆活动
           description: 角色自己改了什么，以及你能收回什么。
         undo: 撤销
+        undo-all: 全部撤销
         action:
           create: 存下
           merge: 合并
@@ -1192,6 +1193,9 @@ pages:
         pending: 在等你点头。你接受之前，它不会出现在回复里。
         accept: 接受
         reject: 拒绝
+        accept-all: 全部接受
+        reject-all: 全部拒绝
+        pending-bulk: '有 {count} 条记忆在等你。'
         superseded: 它取代了一条你还没接受的旧记忆。
         entry:
           title: 记忆
@@ -1211,6 +1215,18 @@ pages:
       semantic-weight-description: 挑记忆的时候，意思相近比关键词命中算多重。
       semantic-backfill: 补算缺少的向量
       semantic-clear: 清空所有向量
+      proactive: 自己想起点什么
+      proactive-description: 偶尔不用你说，她自己想起一件事带进回复。默认关闭。
+      proactive-probability: 每轮想起的概率
+      proactive-probability-description: 满足条件的每一轮里，她主动想起一件事的可能性。
+      proactive-interval: 两次想起之间最少隔几轮
+      proactive-interval-description: 她主动提旧事不会比这更频繁。
+      proactive-max-chars: 提示长度
+      proactive-max-chars-description: 想起的事有多少能进到回复里。
+      proactive-threshold: 相关度下限
+      proactive-threshold-description: 开着语义召回时，记忆和当前对话不够贴近，她就保持沉默。
+      proactive-hint-related: 开着语义召回时，她只会想起和当前对话有关的记忆。
+      proactive-hint-simple: 没开语义召回时，她会从重要的记忆里随机挑一条。想要相关的，就打开语义召回。
       recall_budget: 记忆字数上限
       recall_budget-description: 带上的记忆最多这么多字。上限小一点，留给对话的空间就多一点。
       recall_top_n: 每条消息最多带几条记忆

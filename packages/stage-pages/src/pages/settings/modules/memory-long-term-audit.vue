@@ -17,6 +17,10 @@ function formatDate(at: number) {
 function undo(id: string) {
   void memory.undoAudit(id)
 }
+
+function undoAll() {
+  void memory.undoAll()
+}
 </script>
 
 <template>
@@ -24,6 +28,10 @@ function undo(id: string) {
     <p :class="['text-sm', 'text-neutral-500 dark:text-neutral-400']">
       {{ t(`${KEY}.description`) }}
     </p>
+
+    <div v-if="auditLogs.length > 1" :class="['flex', 'justify-end']">
+      <Button size="sm" :label="t(`${KEY}.undo-all`)" @click="undoAll" />
+    </div>
 
     <ul v-if="auditLogs.length" :class="['flex flex-col', 'gap-2']">
       <li

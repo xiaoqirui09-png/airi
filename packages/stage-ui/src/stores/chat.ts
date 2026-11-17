@@ -62,6 +62,7 @@ import { useContextObservabilityStore } from './devtools/context-observability'
 import { useMemoryStore } from './memory'
 import { useMemoryEmbeddingStore } from './memory-embedding'
 import { useMemoryExtractStore } from './memory-extract'
+import { useMemoryProactiveStore } from './memory-proactive'
 import { useAiriCardStore } from './modules/airi-card'
 import { useAutonomousArtistryStore } from './modules/artistry-autonomous'
 import { useConsciousnessStore } from './modules/consciousness'
@@ -289,6 +290,7 @@ export const useChatStore = defineStore('chat', () => {
   const memory = useMemoryStore()
   const memoryExtract = useMemoryExtractStore()
   const memoryEmbedding = useMemoryEmbeddingStore()
+  const memoryProactive = useMemoryProactiveStore()
 
   /** The persona of a session. A session without one uses the selected card. */
   function personaOf(sessionId: string) {
@@ -1162,7 +1164,10 @@ export const useChatStore = defineStore('chat', () => {
           budgetChars: memory.recallBudgetChars,
         })
       : keywordHits
-    const recalled = createMemoryRecallContext(hits)
+    // Proactive recall may add one hint line to the same block. When it stays quiet (the default), the block is exactly
+    // the keyword/semantic result and the cacheable prefix is unchanged.
+    const reminder = await memoryProactive.maybeRecall(persona, context.sessionId)
+    const recalled = createMemoryRecallContext(hits, reminder)
     if (recalled)
       chatContext.ingestContextMessage(recalled)
     else
@@ -1174,8 +1179,13 @@ export const useChatStore = defineStore('chat', () => {
   runtime.hooks.onChatTurnComplete(async (chat, context) => {
     if (isTaskSession(context.sessionId))
       return
-    void memoryExtract.enqueueTurn(personaOf(context.sessionId), {
-      userText: extractMessageText(context.message),
+    const persona = personaOf(context.sessionId)
+    const userText = extractMessageText(context.message)
+    // Advance the proactive counter only on a completed turn, and keep the recent conversation for its 6b relevance
+    // check. A retry never reaches this hook, so it cannot move the counter or add a duplicate turn.
+    void memoryProactive.recordTurn(persona, context.sessionId, userText, chat.outputText)
+    void memoryExtract.enqueueTurn(persona, {
+      userText,
       assistantText: chat.outputText,
       toolCalls: chat.output.slices.flatMap(slice => slice.type === 'tool-call' ? [slice.toolCall.toolName] : []),
     }).catch(error => console.warn('[memory] Failed to queue the turn:', errorMessageFrom(error)))

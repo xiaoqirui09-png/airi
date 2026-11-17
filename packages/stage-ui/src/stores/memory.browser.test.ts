@@ -2,6 +2,7 @@ import { createPinia, disposePinia } from 'pinia'
 import { prefixStorage } from 'unstorage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { memoryAuditRepo } from '../database/repos/memory-audit.repo'
 import { storage } from '../database/storage'
 import { useMemoryStore } from './memory'
 
@@ -18,6 +19,7 @@ function createStore() {
 describe('memory store', () => {
   beforeEach(async () => {
     await records.clear()
+    await memoryAuditRepo.clear()
     localStorage.removeItem('memory/entries')
     // The entries are in the order of their changes, so each change gets its own time.
     let now = 1
@@ -218,5 +220,56 @@ describe('memory store', () => {
 
     expect(changed).toBe(1)
     await vi.waitFor(() => expect(memory.entries.find(entry => entry.id === old.id)?.salience).toBeLessThan(0.6))
+  })
+
+  const candidate = (description: string) => ({
+    description,
+    body: `${description} in full.`,
+    kind: 'fact' as const,
+    source: 'user' as const,
+    confidence: 0.9,
+    keywords: [description],
+  })
+
+  // Batch accept: every pending candidate becomes active, and active entries are left alone.
+  it('accepts all pending candidates in one call', async () => {
+    const memory = createStore()
+    await memory.storeCandidate(candidate('Fact one.'), 'airi', 'pending')
+    await memory.storeCandidate(candidate('Fact two.'), 'airi', 'pending')
+    const active = (await memory.write({ description: 'Already known.', body: 'Kept.' }, 'airi'))!
+    expect(memory.pendingCount).toBe(2)
+
+    const count = await memory.acceptAll()
+
+    expect(count).toBe(2)
+    await vi.waitFor(() => expect(memory.pendingCount).toBe(0))
+    expect(memory.entries.filter(entry => entry.status === 'active')).toHaveLength(3)
+    expect(memory.entries.find(entry => entry.id === active.id)?.status).toBe('active')
+  })
+
+  // Batch reject: pending candidates are removed and never reach recall.
+  it('rejects all pending candidates in one call', async () => {
+    const memory = createStore()
+    await memory.storeCandidate(candidate('Fact one.'), 'airi', 'pending')
+    await memory.storeCandidate(candidate('Fact two.'), 'airi', 'pending')
+
+    const count = await memory.rejectAll()
+
+    expect(count).toBe(2)
+    await vi.waitFor(() => expect(memory.pendingCount).toBe(0))
+    expect(memory.entries.filter(entry => entry.status === 'active')).toHaveLength(0)
+  })
+
+  // Batch undo unwinds the whole trail newest-first, returning the store to its state before the changes.
+  it('undoes the whole audit trail in one call', async () => {
+    const memory = createStore()
+    await memory.storeCandidate(candidate('First.'), 'airi', 'active')
+    await memory.storeCandidate(candidate('Second.'), 'airi', 'active')
+    await vi.waitFor(() => expect(memory.auditLogs.length).toBe(2))
+
+    const count = await memory.undoAll()
+
+    expect(count).toBe(2)
+    await vi.waitFor(() => expect(memory.entries.filter(entry => entry.status === 'active')).toHaveLength(0))
   })
 })
