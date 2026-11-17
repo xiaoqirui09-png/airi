@@ -1240,8 +1240,27 @@ pages:
       auto_extract_mode: New facts
       auto_extract_mode-description: Ask first keeps each new fact out of the replies until you accept it. Save at once uses it in the next reply.
       description: Long-term memory specific settings and management
+      decay: Forget gradually
+      decay-description: A fact that you never mention again slowly fades in importance. Often-used memories fade slower. Nothing is deleted.
+      decay_half_life: Fading half-life
+      decay_half_life-description: After this many days, an untouched memory holds half its importance.
       enable: Use long-term memory
       enable-description: The character remembers what you talk about. When this is off, it remembers nothing.
+      audit:
+        title: Memory activity
+        description: Every fact that the character saved, merged, or replaced on its own. You can undo any change.
+        empty: No automatic changes yet.
+        entry:
+          title: Memory activity
+          description: What the character changed on its own, and what you can take back.
+        undo: Undo
+        action:
+          create: Saved
+          merge: Merged
+          archive: Archived
+          drop: Removed
+          restore: Restored
+        at: 'Changed on {date}'
       memories:
         title: Memories
         description: Each character keeps its own secrets, and the others cannot see them. After you share a secret, every character knows it, and you cannot take it back. You can delete any secret, but you cannot rewrite one.
@@ -1251,6 +1270,8 @@ pages:
         general: Shared secrets
         pending: Waits for you. It reaches no reply until you accept it.
         accept: Accept
+        reject: Reject
+        superseded: Replaced an older memory that you have not accepted yet.
         entry:
           title: Memories
           description: Each character's secrets, and the secrets that they share.

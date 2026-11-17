@@ -78,6 +78,10 @@ export const memoryRepo = {
   async put(entry: MemoryEntry) {
     await write(() => records.setItemRaw<MemoryEntry>(entry.id, entry))
   },
+  /** Saves several complete entries as one write, so a batch decay cannot interleave with another window. */
+  async putMany(entries: MemoryEntry[]) {
+    await write(() => Promise.all(entries.map(entry => records.setItemRaw<MemoryEntry>(entry.id, entry))))
+  },
   /**
    * Counts a read of each entry. It leaves `updatedAt` alone, because a read is not a change: the index order and the
    * recency of the fact both stay as they were.

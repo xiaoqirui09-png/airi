@@ -105,3 +105,23 @@ export interface MemoryQueueTask extends MemoryTurn {
   /** The turns of the same card just before this one, oldest first. They give a short statement its meaning. */
   recentTurns?: Pick<MemoryTurn, 'userText' | 'assistantText'>[]
 }
+
+/** What an automatic memory action did, as shown in the audit list and used to undo it. */
+export type MemoryAuditAction = 'create' | 'merge' | 'archive' | 'drop' | 'restore'
+
+/**
+ * One automatic change to the store. The store writes a log for each candidate it saves, merges, archives, or drops,
+ * so the owner can see why a fact appeared or vanished and undo the change. `before` holds the entry before the action
+ * and `after` the entry after it, but only the fields that the action touched.
+ */
+export interface MemoryAuditLog {
+  id: string
+  at: number
+  action: MemoryAuditAction
+  /** The entry that the action wrote or changed. An undo addresses this entry. */
+  entryId: string
+  /** A short, human-readable reason, such as the relation that a conflict check decided. */
+  reason: string
+  before?: Partial<MemoryEntry>
+  after?: Partial<MemoryEntry>
+}

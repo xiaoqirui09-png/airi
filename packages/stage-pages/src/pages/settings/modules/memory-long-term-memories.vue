@@ -68,7 +68,11 @@ function remove(entry: MemoryEntry) {
               <span :class="['i-solar:shield-check-linear', 'shrink-0', 'text-base']" aria-hidden="true" />
               <span :class="['min-w-0 flex-1']">{{ t(`${KEY}.pending`) }}</span>
               <Button size="sm" variant="primary" :label="t(`${KEY}.accept`)" @click="memory.accept(entry)" />
+              <Button size="sm" :label="t(`${KEY}.reject`)" @click="memory.reject(entry)" />
             </div>
+            <p v-if="entry.supersedes?.length" :class="['pt-1', 'text-xs', 'text-amber-600 dark:text-amber-400']">
+              {{ t(`${KEY}.superseded`) }}
+            </p>
           </div>
           <GhostButton
             v-if="entry.persona"

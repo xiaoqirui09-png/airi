@@ -1161,8 +1161,27 @@ pages:
       auto_extract_mode: 新事实
       auto_extract_mode-description: 先问我，会等你点头才把新事实用进回复。直接存下，下一条回复就能用上。
       description: 长期记忆
+      decay: 慢慢淡忘
+      decay-description: 你再也不提起的事，份量会渐渐变淡。常常用到的记忆淡得更慢。什么都不会被删除。
+      decay_half_life: 淡忘半衰期
+      decay_half_life-description: 经过这么多天没人提起，一段记忆就只剩一半份量。
       enable: 使用长期记忆
       enable-description: 角色会记住聊过的事。关掉后，它什么都不记得。
+      audit:
+        title: 记忆活动
+        description: 角色自己存下、合并或替换的每一条事实。你可以撤销任何一次改动。
+        empty: 还没有自动改动。
+        entry:
+          title: 记忆活动
+          description: 角色自己改了什么，以及你能收回什么。
+        undo: 撤销
+        action:
+          create: 存下
+          merge: 合并
+          archive: 归档
+          drop: 移除
+          restore: 恢复
+        at: '改于 {date}'
       memories:
         title: 记忆
         description: 这是每个角色自己记下的小秘密，彼此看不到。共享后所有角色都会知道，而且收不回来哦。你可以删掉任何一条，但不能改写。
@@ -1172,6 +1191,8 @@ pages:
         general: 共享的秘密
         pending: 在等你点头。你接受之前，它不会出现在回复里。
         accept: 接受
+        reject: 拒绝
+        superseded: 它取代了一条你还没接受的旧记忆。
         entry:
           title: 记忆
           description: 每个角色的小秘密，和大家共享的秘密。

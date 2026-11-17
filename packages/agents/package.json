@@ -18,6 +18,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./memory-extract": "./src/memory-extract/index.ts",
+    "./memory-conflict": "./src/memory-conflict/index.ts",
     "./tool-card": "./src/tool-card/index.ts",
     "./voice-end-judge": "./src/voice-end-judge/index.ts",
     "./voice-transcription-rephrase": "./src/voice-transcription-rephrase/index.ts"

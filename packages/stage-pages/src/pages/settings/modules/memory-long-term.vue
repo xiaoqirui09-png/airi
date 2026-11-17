@@ -8,7 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 const { t } = useI18n()
-const { enabled, recallEnabled, recallTopN, recallBudgetChars } = storeToRefs(useMemoryStore())
+const { enabled, recallEnabled, recallTopN, recallBudgetChars, decayHalfLifeDays } = storeToRefs(useMemoryStore())
 const { autoExtractEnabled, autoExtractMode } = storeToRefs(useMemoryExtractStore())
 
 const KEY = 'settings.pages.modules.memory-long-term'
@@ -43,6 +43,26 @@ const modeOptions = computed(() => [
         <FieldRange v-model="recallBudgetChars" as="div" :min="200" :max="4000" :step="100" :default-value="800" :label="t(`${KEY}.recall_budget`)" :description="t(`${KEY}.recall_budget-description`)" />
       </template>
     </div>
+    <div v-if="enabled" :class="['flex flex-col', 'gap-4', 'rounded-xl', 'bg-neutral-100 dark:bg-neutral-900', 'p-4']">
+      <p :class="['text-sm font-medium']">
+        {{ t(`${KEY}.decay`) }}
+      </p>
+      <p :class="['text-xs', 'text-neutral-500 dark:text-neutral-400']">
+        {{ t(`${KEY}.decay-description`) }}
+      </p>
+      <FieldRange v-model="decayHalfLifeDays" as="div" :min="7" :max="365" :step="1" :default-value="90" :label="t(`${KEY}.decay_half_life`)" :description="t(`${KEY}.decay_half_life-description`)" />
+    </div>
+    <RouterLink
+      to="/settings/modules/memory-long-term-audit"
+      :class="['rounded-lg', 'bg-neutral-50 dark:bg-neutral-800', 'p-4', 'flex items-center', 'gap-3', 'transition-colors', 'hover:bg-neutral-100 dark:hover:bg-neutral-700']"
+    >
+      <div :class="['i-solar:history-bold-duotone', 'text-2xl', 'text-primary-500 dark:text-primary-400']" />
+      <div :class="['flex-1', 'flex flex-col', 'gap-1']">
+        <span :class="['text-lg font-medium']">{{ t('settings.pages.modules.memory-long-term.audit.entry.title') }}</span>
+        <span :class="['text-sm', 'text-neutral-500 dark:text-neutral-400']">{{ t('settings.pages.modules.memory-long-term.audit.entry.description') }}</span>
+      </div>
+      <div :class="['i-solar:alt-arrow-right-linear', 'text-neutral-400']" />
+    </RouterLink>
     <RouterLink
       to="/settings/modules/memory-long-term-recipes"
       :class="['rounded-lg', 'bg-neutral-50 dark:bg-neutral-800', 'p-4', 'flex items-center', 'gap-3', 'transition-colors', 'hover:bg-neutral-100 dark:hover:bg-neutral-700']"

@@ -1,6 +1,6 @@
 import type { MemoryCandidate } from '@proj-airi/agents/memory-extract'
 
-import type { KeywordPosting, MemoryEntry, MemoryEntryRecord, MemoryStatus, MemoryWrite } from '../types/memory'
+import type { KeywordPosting, MemoryAuditAction, MemoryAuditLog, MemoryEntry, MemoryEntryRecord, MemoryStatus, MemoryWrite } from '../types/memory'
 
 import { errorMessageFrom } from '@moeru/std'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
@@ -9,9 +9,11 @@ import { defineStore } from 'pinia'
 import { v7 as uuidv7 } from 'uuid'
 import { computed, ref, toRaw, watch } from 'vue'
 
+import { memoryAuditRepo } from '../database/repos/memory-audit.repo'
 import { memoryIndexRepo } from '../database/repos/memory-index.repo'
 import { memoryQueueRepo } from '../database/repos/memory-queue.repo'
 import { memoryRepo } from '../database/repos/memory.repo'
+import { decayEntries } from '../memory/decay'
 import { rebuildMemoryIndex } from '../memory/inverted-index'
 import { recallMemories } from '../memory/recall'
 
@@ -56,8 +58,11 @@ export const useMemoryStore = defineStore('memory', () => {
   const recallEnabled = useLocalStorageManualReset<boolean>('settings/memory/recall-enabled', true)
   const recallTopN = useLocalStorageManualReset<number>('settings/memory/recall-top-n', 8)
   const recallBudgetChars = useLocalStorageManualReset<number>('settings/memory/recall-budget-chars', 800)
+  /** Days until an untouched entry holds half its salience. */
+  const decayHalfLifeDays = useLocalStorageManualReset<number>('settings/memory/decay-half-life-days', 90)
   const entries = ref<MemoryEntry[]>([])
   const postings = ref<Map<string, KeywordPosting[]>>(new Map())
+  const auditLogs = ref<MemoryAuditLog[]>([])
   const { data: changed, post } = useBroadcastChannel<string[], string[]>({ name: 'airi:memory' })
   let pendingLoad = moveLegacyEntries()
     .catch(error => console.warn('[memory] Failed to move the entries from localStorage:', errorMessageFrom(error)))
@@ -87,6 +92,25 @@ export const useMemoryStore = defineStore('memory', () => {
     postings.value = stored.size === 0 && entries.value.length > 0
       ? await rebuildMemoryIndex(entries.value)
       : stored
+  }
+
+  /** Reads the audit trail, newest action first. */
+  async function loadAudit() {
+    auditLogs.value = await memoryAuditRepo.list()
+  }
+
+  /**
+   * Records one automatic change. A failed audit write never blocks the memory write that it describes, so a full
+   * store or a locked trail cannot turn a saved fact into a lost one.
+   */
+  async function logChange(action: MemoryAuditAction, entryId: string, reason: string, before?: Partial<MemoryEntry>, after?: Partial<MemoryEntry>) {
+    try {
+      await memoryAuditRepo.append({ id: uuidv7(), at: Date.now(), action, entryId, reason, before, after })
+      auditLogs.value = await memoryAuditRepo.list()
+    }
+    catch (error) {
+      console.warn('[memory] Failed to record the audit log:', errorMessageFrom(error))
+    }
   }
 
   /** Reads the entries again after a change, derives their index, and tells the other windows. */
@@ -150,10 +174,12 @@ export const useMemoryStore = defineStore('memory', () => {
 
   /**
    * Stores one extracted candidate on the card. `status` is pending while the owner has not accepted the candidate,
-   * and active when automatic extraction writes without confirmation.
+   * and active when automatic extraction writes without confirmation. `supersedes` names the entries that this one
+   * replaces, so accepting the candidate can archive them. Every candidate writes an audit log.
    */
-  async function storeCandidate(candidate: MemoryCandidate, personaId: string, status: MemoryStatus) {
+  async function storeCandidate(candidate: MemoryCandidate, personaId: string, status: MemoryStatus, options: { supersedes?: string[], reason?: string } = {}) {
     const now = Date.now()
+    const supersedes = options.supersedes ?? []
     const entry: MemoryEntry = {
       id: uuidv7(),
       description: candidate.description.trim(),
@@ -169,10 +195,50 @@ export const useMemoryStore = defineStore('memory', () => {
       accessCount: 0,
       keywords: candidate.keywords,
       status,
+      ...(supersedes.length ? { supersedes } : {}),
     }
     await memoryRepo.put(entry)
     await publish([entry.id])
+    await logChange('create', entry.id, options.reason ?? 'automatic extraction', undefined, toRaw(entry))
     return entry
+  }
+
+  /**
+   * Folds a duplicate candidate into the entry that already states it. The entry keeps its id; a candidate that adds
+   * detail updates the text, and confidence, salience, and keywords take the stronger value. The audit records the
+   * before and after. No new entry reaches the owner, and the entry never supersedes itself.
+   */
+  async function storeMerged(candidate: MemoryCandidate, reason = 'duplicate of an existing memory', targetId?: string) {
+    const target = targetId
+      ? entries.value.find(entry => entry.id === targetId)
+      : entries.value.find(entry => entry.description === candidate.description.trim())
+    if (!target)
+      return undefined
+    const before = toRaw(target)
+    const merged: MemoryEntry = {
+      ...before,
+      description: candidate.description.trim() || before.description,
+      body: candidate.body.trim() || before.body,
+      confidence: Math.max(before.confidence, candidate.confidence),
+      keywords: [...new Set([...before.keywords, ...candidate.keywords])],
+      updatedAt: Date.now(),
+    }
+    await memoryRepo.put(merged)
+    await publish([target.id])
+    await logChange('merge', target.id, reason, before, merged)
+    return merged
+  }
+
+  /** Marks an entry as archived and points it at the entry that supersedes it. Only a replacement or an undo does this. */
+  async function archiveEntry(id: string, supersededBy: string, reason: string) {
+    const stored = entries.value.find(entry => entry.id === id)
+    if (!stored || stored.status === 'archived')
+      return
+    const before = toRaw(stored)
+    const archived: MemoryEntry = { ...toRaw(stored), status: 'archived', mergedInto: supersededBy, updatedAt: Date.now() }
+    await memoryRepo.put(archived)
+    await publish([id])
+    await logChange('archive', id, reason, before, toRaw(archived))
   }
 
   /** Accepts a pending candidate, so it reaches the index and recall. Only the owner accepts, in Settings. */
@@ -181,8 +247,65 @@ export const useMemoryStore = defineStore('memory', () => {
     if (!stored || stored.status !== 'pending')
       return
     // IndexedDB cannot clone a reactive proxy, and the stored entry holds one for its keyword list.
-    await memoryRepo.put({ ...toRaw(stored), status: 'active', updatedAt: Date.now() })
+    const before = toRaw(stored)
+    const accepted: MemoryEntry = { ...before, status: 'active', updatedAt: Date.now() }
+    await memoryRepo.put(accepted)
     await publish([entry.id])
+    await logChange('restore', entry.id, 'accepted a pending memory', before, accepted)
+    // A replacement only takes effect when the owner accepts it, so archive what it supersedes here, not at extraction.
+    for (const oldId of stored.supersedes ?? [])
+      await archiveEntry(oldId, stored.id, 'replaced by an accepted memory')
+  }
+
+  /** Rejects a pending candidate by removing it. It never reached recall, so no fact disappears from a reply. */
+  async function reject(entry: Pick<MemoryEntry, 'id'>) {
+    const stored = entries.value.find(candidate => candidate.id === entry.id)
+    if (!stored || stored.status !== 'pending')
+      return
+    await logChange('drop', stored.id, 'rejected a pending memory', toRaw(stored))
+    await memoryRepo.remove([stored.id], Date.now())
+    await publish([stored.id])
+  }
+
+  /**
+   * Brings the salience of aged entries up to date, writing only those that changed. Called once a day rather than on
+   * every turn: a fact does not age noticeably within one conversation.
+   */
+  async function runDecay(now = Date.now()) {
+    // Decay the raw entries: a reactive proxy cannot be cloned into IndexedDB, and spreading one keeps its nested
+    // proxy fields. Taking toRaw before the spread gives plain objects with plain keyword arrays.
+    const changed = decayEntries(entries.value.map(entry => toRaw(entry)), now, decayHalfLifeDays.value)
+    if (changed.length === 0)
+      return 0
+    await memoryRepo.putMany(changed)
+    await publish(changed.map(entry => entry.id))
+    return changed.length
+  }
+
+  /**
+   * Undoes one automatic change by writing its `before` snapshot back. A create with no snapshot removes the entry.
+   * A merge or replace restores only the entry that the log names, which is the one the automatic action changed.
+   */
+  async function undoAudit(logId: string) {
+    const log = auditLogs.value.find(item => item.id === logId)
+    if (!log)
+      return false
+    const raw = toRaw(log)
+    if (!raw.before) {
+      await memoryRepo.remove([raw.entryId], Date.now())
+    }
+    else {
+      const stored = entries.value.find(entry => entry.id === raw.entryId)
+      // Copy the keyword array so a reactive proxy from either snapshot is never cloned into IndexedDB.
+      const before = { ...toRaw(raw.before), ...(raw.before.keywords ? { keywords: [...raw.before.keywords] } : {}) }
+      const restored: MemoryEntry = stored
+        ? { ...toRaw(stored), ...before, updatedAt: Date.now() }
+        : { id: raw.entryId, description: '', body: '', persona: undefined, updatedAt: Date.now(), kind: 'fact', source: 'user', confidence: 1, salience: 1, createdAt: Date.now(), lastAccessedAt: Date.now(), accessCount: 0, keywords: [], status: 'active', ...before }
+      await memoryRepo.put(restored)
+    }
+    await publish([raw.entryId])
+    await logChange('restore', raw.entryId, `undid ${raw.action}: ${raw.reason}`)
+    return true
   }
 
   /**
@@ -227,10 +350,13 @@ export const useMemoryStore = defineStore('memory', () => {
     recallEnabled.reset()
     recallTopN.reset()
     recallBudgetChars.reset()
+    decayHalfLifeDays.reset()
     await memoryRepo.clear()
     await memoryIndexRepo.clear()
     await memoryQueueRepo.clear()
+    await memoryAuditRepo.clear()
     await publish([])
+    await loadAudit()
   }
 
   async function restoreState(state: { enabled: boolean, entries: MemoryEntryRecord[] }) {
@@ -242,7 +368,10 @@ export const useMemoryStore = defineStore('memory', () => {
 
   function reload() {
     void load()
-      .then(loadIndex)
+      .then(async () => {
+        await loadIndex()
+        await loadAudit()
+      })
       .catch(error => console.warn('[memory] Failed to read the entries:', errorMessageFrom(error)))
   }
   watch(changed, reload)
@@ -253,7 +382,9 @@ export const useMemoryStore = defineStore('memory', () => {
     recallEnabled,
     recallTopN,
     recallBudgetChars,
+    decayHalfLifeDays,
     entries: computed(() => entries.value),
+    auditLogs: computed(() => auditLogs.value),
     pendingCount: computed(() => entries.value.filter(entry => entry.status === 'pending').length),
     ready,
     indexFor,
@@ -261,7 +392,12 @@ export const useMemoryStore = defineStore('memory', () => {
     recall,
     write,
     storeCandidate,
+    storeMerged,
+    archiveEntry,
     accept,
+    reject,
+    runDecay,
+    undoAudit,
     recordAccess,
     makeGeneral,
     forget,

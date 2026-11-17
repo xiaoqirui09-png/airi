@@ -1,6 +1,9 @@
+import type { MemoryCandidate } from '@proj-airi/agents/memory-extract'
+
 import type { MemoryQueueTask, MemoryTurn } from '../types/memory'
 
 import { errorMessageFrom } from '@moeru/std'
+import { createMemoryConflictAgent } from '@proj-airi/agents/memory-conflict'
 import { createMemoryExtractAgent } from '@proj-airi/agents/memory-extract'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useTimeoutFn } from '@vueuse/core'
@@ -10,6 +13,7 @@ import { ref } from 'vue'
 
 import { useTextGeneration } from '../composables/text-generation'
 import { memoryQueueRepo } from '../database/repos/memory-queue.repo'
+import { findConflicts, resolutionFor } from '../memory/conflict'
 import { annotateCandidate, needsExtraction } from '../memory/extract'
 import { newQueueTask, settleTask } from '../memory/queue'
 import { useMemoryStore } from './memory'
@@ -27,6 +31,7 @@ const TURN_BATCH = 3
 /** The index lines of the entries that the turn already recalls. They let the model update a fact instead of copying it. */
 const RELATED_ENTRIES = 5
 const RECENT_TURNS = 2
+const LAST_DECAY_KEY = 'memory/last-decay-day'
 
 /**
  * Automatic long-term memory: the queue of finished turns, and the extraction that turns them into candidates.
@@ -58,24 +63,68 @@ export const useMemoryExtractStore = defineStore('memory-extract', () => {
   const extracting = ref(false)
 
   /**
+   * Saves one candidate, checking it against the memories that its keywords recall first. A relation check costs a model
+   * call, so it runs only when a stored entry shares enough words. Any failure in the check falls back to a plain save:
+   * a broken comparison must never lose a fact that extraction found.
+   */
+  async function saveCandidate(candidate: MemoryCandidate, persona: string, status: 'active' | 'pending', conflict: ReturnType<typeof createMemoryConflictAgent>) {
+    const matches = findConflicts(candidate, memory.entries)
+    const match = matches[0]
+    if (!match) {
+      await memory.storeCandidate(candidate, persona, status)
+      return
+    }
+
+    let resolution: ReturnType<typeof resolutionFor> = 'store'
+    try {
+      const relation = await conflict.detect({
+        existing: { description: match.entry.description, body: match.entry.body },
+        incoming: { description: candidate.description, body: candidate.body },
+      }, AbortSignal.timeout(REQUEST_TIMEOUT_MS))
+      resolution = resolutionFor(relation)
+    }
+    catch (error) {
+      console.warn('[memory] Conflict check failed, storing the candidate as new:', errorMessageFrom(error))
+    }
+
+    if (resolution === 'merge') {
+      await memory.storeMerged(candidate, `duplicate of ${match.entry.id}`, match.entry.id)
+      return
+    }
+    if (resolution === 'replace') {
+      const supersedes = [match.entry.id]
+      const replacement = await memory.storeCandidate(candidate, persona, status, { supersedes, reason: `replaces ${match.entry.id}` })
+      // In auto mode the replacement is active, so the old entry is archived now. In confirm mode its pending
+      // replacement archives the old entry only when the owner accepts it.
+      if (status === 'active' && replacement)
+        await memory.archiveEntry(match.entry.id, replacement.id, 'replaced by a newer memory')
+      return
+    }
+    // `store`, and `skip` which would drop a duplicate the owner has not confirmed: keep the candidate so no turn is lost.
+    await memory.storeCandidate(candidate, persona, status)
+  }
+
+  /**
    * Extracts one claimed task and settles it. A failed request leaves the task for a later attempt, so a model outage
    * does not lose the turn. A request that finds no lasting fact settles the task as done.
    */
   async function extractTask(task: MemoryQueueTask, selection: { providerId: string, model: string }) {
     let failed = false
     try {
-      const agent = createMemoryExtractAgent({ generateText: generateText(selection) })
-      const candidates = await agent.extract({
+      const generateForSelection = generateText(selection)
+      const extract = createMemoryExtractAgent({ generateText: generateForSelection })
+      const candidates = await extract.extract({
         userText: task.userText,
         assistantText: task.assistantText,
         recentTurns: task.recentTurns,
         relatedDescriptions: memory.recall(task.persona, task.userText).slice(0, RELATED_ENTRIES).map(hit => hit.entry.description),
       }, AbortSignal.timeout(REQUEST_TIMEOUT_MS))
       const status = autoExtractMode.value === 'auto' ? 'active' : 'pending'
+      const conflict = createMemoryConflictAgent({ generateText: generateForSelection })
       for (const candidate of candidates) {
         const annotated = annotateCandidate(candidate, task.userText)
         if (annotated)
-          await memory.storeCandidate(annotated, task.persona, status)
+          await saveCandidate(annotated, task.persona, status, conflict)
       }
     }
     catch (error) {
@@ -112,10 +161,27 @@ export const useMemoryExtractStore = defineStore('memory-extract', () => {
   }
 
   /**
+   * Runs salience decay at most once a day. A fact does not age visibly within one conversation, so a daily pass is
+   * enough and keeps the write cost off the common path. The day stamp survives a reload.
+   */
+  async function maybeDecay() {
+    const storage = globalThis.localStorage
+    if (!storage || !memory.enabled)
+      return
+    const today = new Date().toISOString().slice(0, 10)
+    if (storage.getItem(LAST_DECAY_KEY) === today)
+      return
+    await memory.ready()
+    await memory.runDecay()
+    storage.setItem(LAST_DECAY_KEY, today)
+  }
+
+  /**
    * Stores one finished turn for extraction, unless the turn holds no lasting fact. The turns of the same card that
    * came before it travel with it, so a short statement such as an agreement keeps its meaning.
    */
   async function enqueueTurn(persona: string, turn: MemoryTurn) {
+    void maybeDecay().catch(error => console.warn('[memory] Failed to decay:', errorMessageFrom(error)))
     if (!memory.enabled || !autoExtractEnabled.value || !needsExtraction(turn))
       return
     const previous = (await memoryQueueRepo.list())
@@ -130,6 +196,7 @@ export const useMemoryExtractStore = defineStore('memory-extract', () => {
   // an interrupted turn is extracted again instead of waiting forever.
   useTimeoutFn(async () => {
     await memoryQueueRepo.resetInterrupted(Date.now())
+    await maybeDecay().catch(error => console.warn('[memory] Failed to decay on start:', errorMessageFrom(error)))
     await consume(STARTUP_BATCH)
   }, STARTUP_DELAY_MS)
 

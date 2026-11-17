@@ -28,6 +28,8 @@ storage.mount('memory', indexedDbDriver({ dbName: 'airi-memory', storeName: 'ent
 storage.mount('memory-index', indexedDbDriver({ dbName: 'airi-memory-index', storeName: 'keywords' }))
 /** Finished chat turns that wait for memory extraction, one record for each turn, keyed by the task ID. */
 storage.mount('memory-queue', indexedDbDriver({ dbName: 'airi-memory-queue', storeName: 'tasks' }))
+/** The audit trail of automatic memory changes, one record for each action, keyed by the log ID. */
+storage.mount('memory-audit', indexedDbDriver({ dbName: 'airi-memory-audit', storeName: 'logs' }))
 /** Recipes, one record for each recipe, keyed by the recipe ID. */
 storage.mount('recipes', indexedDbDriver({ dbName: 'airi-recipes', storeName: 'recipes' }))
 /** The sticker library. Entries and images have their own key prefixes. */

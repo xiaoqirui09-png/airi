@@ -159,4 +159,64 @@ describe('memory store', () => {
     ])
     expect(localStorage.getItem('memory/entries')).toBeNull()
   })
+
+  // Stage 3: a pending replacement only archives the old entry once the owner accepts it.
+  it('archives the entries that a replacement supersedes only when the owner accepts it', async () => {
+    const memory = createStore()
+    const old = (await memory.write({ description: 'Cat name.', body: 'The cat is called Doudou.' }, 'airi'))!
+    const candidate = {
+      description: 'Cat name.',
+      body: 'The cat is now called Maomao.',
+      kind: 'fact' as const,
+      source: 'user' as const,
+      confidence: 0.9,
+      keywords: ['cat', 'name'],
+    }
+
+    const pending = await memory.storeCandidate(candidate, 'airi', 'pending', { supersedes: [old.id], reason: 'replaces cat name' })
+
+    expect(memory.entries.find(entry => entry.id === old.id)?.status).toBe('active')
+    expect(pending.supersedes).toEqual([old.id])
+    await memory.accept(pending)
+
+    await vi.waitFor(() => expect(memory.entries.find(entry => entry.id === old.id)?.status).toBe('archived'))
+    expect(memory.entries.find(entry => entry.id === old.id)?.mergedInto).toBe(pending.id)
+    expect(memory.read(pending.id, 'airi')?.status).toBe('active')
+  })
+
+  // Stage 3: every automatic candidate writes an audit log, and undo removes it again.
+  it('records a create in the audit and undoes it by removing the entry', async () => {
+    const memory = createStore()
+    const candidate = {
+      description: 'Likes iced americano.',
+      body: 'The owner drinks one each morning.',
+      kind: 'preference' as const,
+      source: 'user' as const,
+      confidence: 0.9,
+      keywords: ['americano'],
+    }
+
+    const entry = await memory.storeCandidate(candidate, 'airi', 'active')
+    await vi.waitFor(() => expect(memory.auditLogs.length).toBeGreaterThan(0))
+    const create = memory.auditLogs.find(log => log.action === 'create' && log.entryId === entry.id)
+    expect(create).toBeDefined()
+
+    expect(await memory.undoAudit(create!.id)).toBe(true)
+
+    await vi.waitFor(() => expect(memory.entries.find(item => item.id === entry.id)).toBeUndefined())
+  })
+
+  // Stage 3: decay lowers an old entry's salience while leaving a fresh one alone.
+  it('decays an old entry but not a fresh one', async () => {
+    const memory = createStore()
+    const old = (await memory.write({ description: 'Old fact.', body: 'Said long ago.' }, 'airi'))!
+    await memory.ready()
+
+    // The entry was written at a small mocked time. Decay at one half-life later: it should lose about half its salience.
+    const oneHalfLifeLater = 90 * 86_400_000 + old.updatedAt
+    const changed = await memory.runDecay(oneHalfLifeLater)
+
+    expect(changed).toBe(1)
+    await vi.waitFor(() => expect(memory.entries.find(entry => entry.id === old.id)?.salience).toBeLessThan(0.6))
+  })
 })
