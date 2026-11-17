@@ -1,17 +1,24 @@
 <script setup lang="ts">
 import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
+import { useMemoryEmbeddingStore } from '@proj-airi/stage-ui/stores/memory-embedding'
 import { useMemoryExtractStore } from '@proj-airi/stage-ui/stores/memory-extract'
 import { FieldCheckbox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 const { t } = useI18n()
 const { enabled, recallEnabled, recallTopN, recallBudgetChars, decayHalfLifeDays } = storeToRefs(useMemoryStore())
 const { autoExtractEnabled, autoExtractMode } = storeToRefs(useMemoryExtractStore())
+const embeddingStore = useMemoryEmbeddingStore()
+const { enabled: semanticEnabled, recallWeight, vectorCount, ready: semanticReady, failure: semanticFailure } = storeToRefs(embeddingStore)
 
 const KEY = 'settings.pages.modules.memory-long-term'
+
+onMounted(() => {
+  void embeddingStore.loadCount()
+})
 
 const modeOptions = computed(() => [
   { label: t(`${KEY}.mode.confirm`), value: 'confirm' as const, icon: 'i-solar:shield-check-linear' },
@@ -41,6 +48,26 @@ const modeOptions = computed(() => [
       <template v-if="recallEnabled">
         <FieldRange v-model="recallTopN" as="div" :min="1" :max="20" :step="1" :default-value="8" :label="t(`${KEY}.recall_top_n`)" :description="t(`${KEY}.recall_top_n-description`)" />
         <FieldRange v-model="recallBudgetChars" as="div" :min="200" :max="4000" :step="100" :default-value="800" :label="t(`${KEY}.recall_budget`)" :description="t(`${KEY}.recall_budget-description`)" />
+      </template>
+    </div>
+    <div v-if="enabled" :class="['flex flex-col', 'gap-4', 'rounded-xl', 'bg-neutral-100 dark:bg-neutral-900', 'p-4']">
+      <FieldCheckbox v-model="semanticEnabled" :label="t(`${KEY}.semantic`)" :description="t(`${KEY}.semantic-description`)" />
+      <template v-if="semanticEnabled">
+        <p :class="['text-xs', 'text-neutral-500 dark:text-neutral-400']">
+          {{ semanticReady ? t(`${KEY}.semantic-ready`) : (semanticFailure ? t(`${KEY}.semantic-error`, { error: semanticFailure }) : t(`${KEY}.semantic-loading`)) }}
+        </p>
+        <p :class="['text-xs', 'text-neutral-500 dark:text-neutral-400']">
+          {{ t(`${KEY}.semantic-vectors`, { count: vectorCount }) }}
+        </p>
+        <FieldRange v-model="recallWeight" as="div" :min="0" :max="1" :step="0.05" :default-value="0.55" :label="t(`${KEY}.semantic-weight`)" :description="t(`${KEY}.semantic-weight-description`)" />
+        <div :class="['flex', 'gap-2', 'flex-wrap']">
+          <button type="button" :class="['rounded-lg', 'bg-neutral-50 dark:bg-neutral-800', 'px-3', 'py-2', 'text-sm', 'hover:bg-neutral-100 dark:hover:bg-neutral-700']" @click="embeddingStore.backfill()">
+            {{ t(`${KEY}.semantic-backfill`) }}
+          </button>
+          <button type="button" :class="['rounded-lg', 'bg-neutral-50 dark:bg-neutral-800', 'px-3', 'py-2', 'text-sm', 'hover:bg-neutral-100 dark:hover:bg-neutral-700']" @click="embeddingStore.clearVectors()">
+            {{ t(`${KEY}.semantic-clear`) }}
+          </button>
+        </div>
       </template>
     </div>
     <div v-if="enabled" :class="['flex flex-col', 'gap-4', 'rounded-xl', 'bg-neutral-100 dark:bg-neutral-900', 'p-4']">

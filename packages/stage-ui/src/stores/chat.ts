@@ -37,6 +37,7 @@ import {
   AIRI_CHAT_ROUND_ID_HEADER,
   AIRI_CHAT_SESSION_ID_HEADER,
 } from '../libs/product-signals/headers'
+import { fuseRecallHits } from '../memory/recall'
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
 import { composeDrawCardPrompt, createDrawCardTool, DRAW_CARD_TOOL_NAME, drawCardContent } from '../tools/draw-card'
 import { createJudgeRecipeTool, judgmentSkillText } from '../tools/judge-recipe'
@@ -59,6 +60,7 @@ import { useChatSessionStore } from './chat/session-store'
 import { useChatStreamStore } from './chat/stream-store'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useMemoryStore } from './memory'
+import { useMemoryEmbeddingStore } from './memory-embedding'
 import { useMemoryExtractStore } from './memory-extract'
 import { useAiriCardStore } from './modules/airi-card'
 import { useAutonomousArtistryStore } from './modules/artistry-autonomous'
@@ -286,6 +288,7 @@ export const useChatStore = defineStore('chat', () => {
   const recipes = useRecipesStore()
   const memory = useMemoryStore()
   const memoryExtract = useMemoryExtractStore()
+  const memoryEmbedding = useMemoryEmbeddingStore()
 
   /** The persona of a session. A session without one uses the selected card. */
   function personaOf(sessionId: string) {
@@ -1146,7 +1149,20 @@ export const useChatStore = defineStore('chat', () => {
   // changing the system prompt. The registry is global, so a message that recalls nothing removes the previous block:
   // another session's memories must not reach this one.
   runtime.hooks.onBeforeMessageComposed(async (message, context) => {
-    const recalled = createMemoryRecallContext(memory.recall(personaOf(context.sessionId), message))
+    const persona = personaOf(context.sessionId)
+    const keywordHits = memory.recall(persona, message)
+    // Semantic recall is opt-in and bounded by a timeout; when it is off or fails it returns no hits, so the fused
+    // result is exactly the keyword result and the cacheable prefix stays unchanged.
+    const semanticHits = memoryEmbedding.enabled
+      ? await memoryEmbedding.recallSemantic(persona, message)
+      : []
+    const hits = semanticHits.length > 0
+      ? fuseRecallHits(keywordHits, semanticHits, memoryEmbedding.recallWeight, {
+          limit: memory.recallTopN,
+          budgetChars: memory.recallBudgetChars,
+        })
+      : keywordHits
+    const recalled = createMemoryRecallContext(hits)
     if (recalled)
       chatContext.ingestContextMessage(recalled)
     else

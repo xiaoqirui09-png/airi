@@ -125,3 +125,24 @@ export interface MemoryAuditLog {
   before?: Partial<MemoryEntry>
   after?: Partial<MemoryEntry>
 }
+
+/**
+ * The embedding of one memory entry, kept apart from the fact so a model change can invalidate every vector at once.
+ * The signature names the model, revision, and quantization that produced the vector; a mismatch means the vector is
+ * stale and must not be scored against a new query. `contentHash` names the text, so an edited entry is re-embedded.
+ */
+export interface MemoryVector {
+  /** The entry whose meaning this vector holds. */
+  id: string
+  /** The card that owns the entry. Absent for a general memory. */
+  persona?: string
+  /** `${modelId}@${revision}#${dtype}` of the model that produced the vector. */
+  modelSignature: string
+  /** The vector length, fixed by the model (512 for bge-small-zh-v1.5). */
+  dim: number
+  /** The unit-length embedding. Stored as a plain array so IndexedDB can clone it. */
+  vector: number[]
+  /** Hash of the description + body that produced the vector. */
+  contentHash: string
+  updatedAt: number
+}

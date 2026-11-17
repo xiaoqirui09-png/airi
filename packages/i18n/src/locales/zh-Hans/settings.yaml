@@ -1201,6 +1201,16 @@ pages:
         auto: 直接存下
       recall: 每条回复都带上记忆
       recall-description: 角色只会读你这句话提到的记忆。一句话都没提到，就什么都不带。
+      semantic: 读懂意思，不只是字面
+      semantic-description: 按意思找相关记忆，就算你说的词对不上，也可能想起一件事。打开后第一次会下载一个小语言模型，向量在后台慢慢算。
+      semantic-loading: 正在准备语义模型，这是第一次使用。它在后台跑，不会拖慢聊天。
+      semantic-ready: 语义召回已经准备好了。
+      semantic-error: '语义模型暂时用不了（{error}）。关键词召回还是照常能用。'
+      semantic-vectors: '已经算好向量的记忆：{count} 条'
+      semantic-weight: 意思占多少，字面占多少
+      semantic-weight-description: 挑记忆的时候，意思相近比关键词命中算多重。
+      semantic-backfill: 补算缺少的向量
+      semantic-clear: 清空所有向量
       recall_budget: 记忆字数上限
       recall_budget-description: 带上的记忆最多这么多字。上限小一点，留给对话的空间就多一点。
       recall_top_n: 每条消息最多带几条记忆

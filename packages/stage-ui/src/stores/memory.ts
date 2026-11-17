@@ -12,6 +12,7 @@ import { computed, ref, toRaw, watch } from 'vue'
 import { memoryAuditRepo } from '../database/repos/memory-audit.repo'
 import { memoryIndexRepo } from '../database/repos/memory-index.repo'
 import { memoryQueueRepo } from '../database/repos/memory-queue.repo'
+import { memoryVectorRepo } from '../database/repos/memory-vector.repo'
 import { memoryRepo } from '../database/repos/memory.repo'
 import { decayEntries } from '../memory/decay'
 import { rebuildMemoryIndex } from '../memory/inverted-index'
@@ -355,6 +356,7 @@ export const useMemoryStore = defineStore('memory', () => {
     await memoryIndexRepo.clear()
     await memoryQueueRepo.clear()
     await memoryAuditRepo.clear()
+    await memoryVectorRepo.clear()
     await publish([])
     await loadAudit()
   }

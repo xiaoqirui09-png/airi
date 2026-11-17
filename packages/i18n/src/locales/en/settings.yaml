@@ -1280,6 +1280,16 @@ pages:
         auto: Save at once
       recall: Bring memories into each reply
       recall-description: The character reads the memories that your message names. A message that names none brings nothing.
+      semantic: Understand meaning, not just words
+      semantic-description: Finds related memories by meaning, so a message that names no keyword can still bring one up. Turning this on downloads a small language model on first use and computes vectors in the background.
+      semantic-loading: Preparing the semantic model on first use. This runs in the background and will not slow down chat.
+      semantic-ready: Semantic recall is ready.
+      semantic-error: 'The semantic model is unavailable ({error}). Keyword recall still works.'
+      semantic-vectors: 'Memories with a vector: {count}'
+      semantic-weight: Meaning vs. keywords
+      semantic-weight-description: How much a meaning match counts against a keyword match when memories are ranked.
+      semantic-backfill: Compute missing vectors
+      semantic-clear: Clear all vectors
       recall_budget: Memory text limit
       recall_budget-description: The recalled memories stop at this many characters. A lower limit leaves more room for the conversation.
       recall_top_n: Most memories per message

@@ -72,6 +72,55 @@ export function scoreMemoryEntry(entry: MemoryEntry, matched: Map<string, number
  * never injected. `entries` are the ones that the persona can see. Only active entries reach a reply: a pending
  * candidate waits for the owner, and a merged or archived one no longer states the truth.
  */
+/**
+ * Fuses keyword hits and semantic hits into one ranked, budget-capped list. An entry found by both signals gets a
+ * blended score; an entry found by one signal keeps that signal's score. This lets a message with no keyword match
+ * still surface a semantically close entry, while an entry that the message names by keyword is never pushed out just
+ * because its embedding is weaker.
+ *
+ * `semanticWeight` is the share of the blended score that comes from cosine similarity (0–1). Negative cosine means
+ * the entry is unrelated, so it is clamped to zero: a semantic signal can lift an entry but never hard-insert an
+ * opposite one.
+ */
+export function fuseRecallHits(keywordHits: MemoryHit[], semanticHits: MemoryHit[], semanticWeight: number, options: { limit: number, budgetChars: number }): MemoryHit[] {
+  const weight = Math.min(1, Math.max(0, semanticWeight))
+  const byId = new Map<string, { hit: MemoryHit, keyword?: number, semantic?: number }>()
+  for (const hit of keywordHits) {
+    byId.set(hit.entry.id, { hit, keyword: hit.score })
+  }
+  for (const hit of semanticHits) {
+    const normalized = Math.min(1, Math.max(0, hit.score))
+    const existing = byId.get(hit.entry.id)
+    if (existing)
+      existing.semantic = normalized
+    else
+      byId.set(hit.entry.id, { hit, semantic: normalized })
+  }
+  const ranked = [...byId.values()]
+    .map(({ hit, keyword, semantic }) => {
+      let score: number
+      if (keyword !== undefined && semantic !== undefined)
+        score = (1 - weight) * keyword + weight * semantic
+      else
+        score = keyword ?? semantic ?? 0
+      return { entry: hit.entry, score }
+    })
+    .sort((left, right) => right.score - left.score)
+
+  const selected: MemoryHit[] = []
+  let usedChars = 0
+  for (const hit of ranked) {
+    if (selected.length >= options.limit)
+      break
+    const lineChars = hit.entry.id.length + hit.entry.description.length + 4
+    if (usedChars + lineChars > options.budgetChars)
+      break
+    usedChars += lineChars
+    selected.push(hit)
+  }
+  return selected
+}
+
 export function recallMemories(entries: MemoryEntry[], postings: Map<string, KeywordPosting[]>, message: string, options: RecallOptions): MemoryHit[] {
   const keys = tokenizeMemoryText(message)
   if (keys.length === 0)

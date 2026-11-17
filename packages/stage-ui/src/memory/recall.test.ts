@@ -4,7 +4,7 @@ import { subDays } from 'date-fns'
 import { describe, expect, it } from 'vitest'
 
 import { normalizeMemoryEntry } from './attributes'
-import { recallMemories, scoreMemoryEntry } from './recall'
+import { fuseRecallHits, recallMemories, scoreMemoryEntry } from './recall'
 
 const NOW = 1_800_000_000_000
 const options = { limit: 8, budgetChars: 800, now: NOW }
@@ -157,5 +157,43 @@ describe('scoreMemoryEntry', () => {
 
   it('caps the keyword signal at 1 when the weights pass the key count', () => {
     expect(scoreMemoryEntry(entry('a'), new Map([['cat', 1], ['doudou', 1]]), 1, 0, NOW)).toBeCloseTo(0.45 + 0.25 + 0.15 + 0.05 * 0.6, 5)
+  })
+})
+
+describe('fuseRecallHits', () => {
+  const fuseOptions = { limit: 8, budgetChars: 800 }
+  const cat = entry('cat', { description: 'Cat' })
+  const coffee = entry('coffee', { description: 'Coffee' })
+
+  it('keeps a keyword-only hit when there is no semantic signal', () => {
+    const fused = fuseRecallHits([{ entry: cat, score: 0.8 }], [], 0.55, fuseOptions)
+    expect(fused.map(hit => hit.entry.id)).toEqual(['cat'])
+    expect(fused[0]?.score).toBeCloseTo(0.8, 5)
+  })
+
+  // The goal of stage 5: a message with no keyword match still surfaces a close entry.
+  it('surfaces a semantic-only hit when keywords found nothing', () => {
+    const fused = fuseRecallHits([], [{ entry: coffee, score: 0.9 }], 0.55, fuseOptions)
+    expect(fused.map(hit => hit.entry.id)).toEqual(['coffee'])
+    // cosine 0.9 is already on the 0–1 scale for a positive match.
+    expect(fused[0]?.score).toBeCloseTo(0.9, 5)
+  })
+
+  it('blends both signals for an entry found twice, without duplicating it', () => {
+    const fused = fuseRecallHits([{ entry: cat, score: 0.8 }], [{ entry: cat, score: 0.6 }], 0.5, fuseOptions)
+    expect(fused).toHaveLength(1)
+    // keyword 0.8 and semantic 0.6, equal weight -> 0.7
+    expect(fused[0]?.score).toBeCloseTo(0.7, 5)
+  })
+
+  it('clamps a negative cosine to zero instead of surfacing an opposite entry', () => {
+    const fused = fuseRecallHits([], [{ entry: coffee, score: -0.4 }], 0.55, fuseOptions)
+    expect(fused[0]?.score).toBe(0)
+  })
+
+  it('respects the limit and character budget', () => {
+    const many = Array.from({ length: 10 }, (_, index) => ({ entry: entry(`e${index}`), score: 1 - index / 10 }))
+    const fused = fuseRecallHits(many, [], 0.55, { limit: 3, budgetChars: 800 })
+    expect(fused).toHaveLength(3)
   })
 })

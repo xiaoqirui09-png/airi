@@ -30,6 +30,8 @@ storage.mount('memory-index', indexedDbDriver({ dbName: 'airi-memory-index', sto
 storage.mount('memory-queue', indexedDbDriver({ dbName: 'airi-memory-queue', storeName: 'tasks' }))
 /** The audit trail of automatic memory changes, one record for each action, keyed by the log ID. */
 storage.mount('memory-audit', indexedDbDriver({ dbName: 'airi-memory-audit', storeName: 'logs' }))
+/** Semantic embeddings of long-term memory, one vector for each entry, keyed by the entry ID. */
+storage.mount('memory-vector', indexedDbDriver({ dbName: 'airi-memory-vector', storeName: 'vectors' }))
 /** Recipes, one record for each recipe, keyed by the recipe ID. */
 storage.mount('recipes', indexedDbDriver({ dbName: 'airi-recipes', storeName: 'recipes' }))
 /** The sticker library. Entries and images have their own key prefixes. */
