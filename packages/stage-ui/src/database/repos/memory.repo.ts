@@ -1,8 +1,9 @@
-import type { MemoryEntry, MemoryWrite } from '../../types/memory'
+import type { MemoryAttributes, MemoryEntry, MemoryEntryRecord, MemoryWrite } from '../../types/memory'
 
 import { prefixStorage } from 'unstorage'
 import { v7 as uuidv7 } from 'uuid'
 
+import { normalizeMemoryEntry, toolWriteAttributes } from '../../memory/attributes'
 import { listRawItems, storage } from '../storage'
 
 /** A removed entry stays as a tombstone with the time of the removal, so a later sync can remove it on other devices. */
@@ -12,7 +13,7 @@ interface MemoryTombstone {
   deleted: true
 }
 
-type StoredMemory = MemoryEntry | MemoryTombstone
+type StoredMemory = MemoryEntryRecord | MemoryTombstone
 
 const records = prefixStorage(storage, 'memory')
 
@@ -27,39 +28,43 @@ function write<T>(run: () => Promise<T>) {
 /** The stored entry with this id, or undefined when it is missing or removed. */
 async function storedEntry(id: string) {
   const stored = await records.getItemRaw<StoredMemory>(id)
-  return stored && !('deleted' in stored) ? stored : undefined
+  return stored && !('deleted' in stored) ? normalizeMemoryEntry(stored) : undefined
 }
 
 /** Long-term memory on this device, one record for each entry, keyed by the entry id. */
 export const memoryRepo = {
-  /** The entries that are not removed, oldest change first. */
+  /** The entries that are not removed, oldest change first. Records that predate the attributes are filled on read. */
   async list() {
     const entries = (await listRawItems<StoredMemory>(records, ''))
       .map(([, record]) => record)
-      .filter((record): record is MemoryEntry => !('deleted' in record))
+      .filter((record): record is MemoryEntryRecord => !('deleted' in record))
+      .map(normalizeMemoryEntry)
     return entries.sort((left, right) => left.updatedAt - right.updatedAt)
   },
-  /** Adds entries as they are, with their ids. Only the move from localStorage uses it. */
-  async add(entries: MemoryEntry[]) {
-    await write(() => Promise.all(entries.map(entry => records.setItemRaw<MemoryEntry>(entry.id, entry))))
+  /** Adds records as they are, with their ids. Only the move from localStorage uses it. */
+  async add(entries: MemoryEntryRecord[]) {
+    await write(() => Promise.all(entries.map(entry => records.setItemRaw<MemoryEntry>(entry.id, normalizeMemoryEntry(entry)))))
   },
-  /** Replaces the stored entries as one operation against other windows' writes. */
-  async replace(entries: MemoryEntry[]) {
+  /** Replaces the stored entries as one operation against other windows' writes. An imported file can predate the attributes. */
+  async replace(entries: MemoryEntryRecord[]) {
     await write(async () => {
       await records.clear()
-      await Promise.all(entries.map(entry => records.setItem<MemoryEntry>(entry.id, entry)))
+      await Promise.all(entries.map(entry => records.setItemRaw<MemoryEntry>(entry.id, normalizeMemoryEntry(entry))))
     })
   },
   /**
    * Saves a fact on the card of `persona`, on the stored records. An id of the card's own stored entry replaces that
-   * entry. Any other id, for example of a general or a removed entry, adds a new entry with a new id.
-   * Resolves to the stored entry.
+   * entry and keeps its attributes. Any other id, for example of a general or a removed entry, adds a new entry with a
+   * new id. Resolves to the stored entry.
    */
   async write(input: MemoryWrite, persona: string, updatedAt: number) {
     return write(async () => {
       const own = input.id ? await storedEntry(input.id) : undefined
+      const reused = own?.persona === persona ? own : undefined
+      const attributes: MemoryAttributes = reused ?? toolWriteAttributes(updatedAt)
       const entry: MemoryEntry = {
-        id: own?.persona === persona ? own.id : uuidv7(),
+        ...attributes,
+        id: reused?.id ?? uuidv7(),
         description: input.description,
         body: input.body,
         persona,
@@ -68,6 +73,21 @@ export const memoryRepo = {
       await records.setItemRaw<MemoryEntry>(entry.id, entry)
       return entry
     })
+  },
+  /** Saves a complete entry, with the attributes that the extraction pipeline chose. */
+  async put(entry: MemoryEntry) {
+    await write(() => records.setItemRaw<MemoryEntry>(entry.id, entry))
+  },
+  /**
+   * Counts a read of each entry. It leaves `updatedAt` alone, because a read is not a change: the index order and the
+   * recency of the fact both stay as they were.
+   */
+  async recordAccess(ids: string[], now: number) {
+    await write(() => Promise.all(ids.map(async (id) => {
+      const stored = await storedEntry(id)
+      if (stored)
+        await records.setItemRaw<MemoryEntry>(id, { ...stored, accessCount: stored.accessCount + 1, lastAccessedAt: now })
+    })))
   },
   /** Makes a card's stored entry general. Resolves to whether it changed. */
   async makeGeneral(id: string, updatedAt: number) {

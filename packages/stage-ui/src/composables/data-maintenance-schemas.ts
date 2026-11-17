@@ -1,11 +1,24 @@
 import * as v from 'valibot'
 
+// The attributes are optional because a file exported before they existed carries only the base fields. The store
+// fills them on import, so an old file imports as active facts of full confidence.
 const memoryEntrySchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1)),
   description: v.string(),
   body: v.pipe(v.string(), v.trim(), v.minLength(1)),
   persona: v.optional(v.string()),
   updatedAt: v.number(),
+  kind: v.optional(v.picklist(['fact', 'preference', 'event', 'plan'])),
+  source: v.optional(v.picklist(['user', 'model', 'tool'])),
+  confidence: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
+  salience: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
+  createdAt: v.optional(v.number()),
+  lastAccessedAt: v.optional(v.number()),
+  accessCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+  keywords: v.optional(v.array(v.string())),
+  status: v.optional(v.picklist(['active', 'pending', 'merged', 'archived'])),
+  mergedInto: v.optional(v.string()),
+  supersedes: v.optional(v.array(v.string())),
 })
 
 export const memoryStateSchema = v.pipe(

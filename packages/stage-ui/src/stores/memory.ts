@@ -1,13 +1,19 @@
-import type { MemoryEntry, MemoryWrite } from '../types/memory'
+import type { MemoryCandidate } from '@proj-airi/agents/memory-extract'
+
+import type { KeywordPosting, MemoryEntry, MemoryEntryRecord, MemoryStatus, MemoryWrite } from '../types/memory'
 
 import { errorMessageFrom } from '@moeru/std'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useBroadcastChannel } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { v7 as uuidv7 } from 'uuid'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, toRaw, watch } from 'vue'
 
+import { memoryIndexRepo } from '../database/repos/memory-index.repo'
+import { memoryQueueRepo } from '../database/repos/memory-queue.repo'
 import { memoryRepo } from '../database/repos/memory.repo'
+import { rebuildMemoryIndex } from '../memory/inverted-index'
+import { recallMemories } from '../memory/recall'
 
 const LEGACY_ENTRIES_STORAGE_KEY = 'memory/entries'
 
@@ -23,7 +29,7 @@ async function moveLegacyEntries() {
     const stored = localStorage.getItem(LEGACY_ENTRIES_STORAGE_KEY)
     if (!stored)
       return
-    const legacy: (Omit<MemoryEntry, 'id'> & { name: string })[] = JSON.parse(stored)
+    const legacy: (Omit<MemoryEntryRecord, 'id'> & { name: string })[] = JSON.parse(stored)
     await memoryRepo.add(legacy.map(({ description, body, persona, updatedAt }) => ({ id: uuidv7(), description, body, persona, updatedAt })))
     localStorage.removeItem(LEGACY_ENTRIES_STORAGE_KEY)
   })
@@ -31,21 +37,27 @@ async function moveLegacyEntries() {
 
 /**
  * Long-term memory as a small index and one entry per fact, kept by the character itself.
- * IndexedDB keeps the entries. After each change, the other windows read them again.
+ * IndexedDB keeps the entries and their inverted index. After each change, the other windows read them again.
  *
  * Use when:
  * - A run reads the index or an entry, writes or forgets a fact, or Settings lists the memories by card.
+ * - A run recalls the entries that its message names, before it composes a reply.
  *
  * Expects:
  * - Callers pass the character card of the run. It reads its own memories and the general ones.
  * - Only the owner makes a memory general, in Settings. A run writes and forgets only its own card's memories.
+ * - An extracted candidate stays pending until the owner accepts it, unless automatic extraction runs in auto mode.
  *
  * Returns:
  * - Whether memory is on, entries, `ready` for the first read, the index for a card, and actions that change entries.
  */
 export const useMemoryStore = defineStore('memory', () => {
   const enabled = useLocalStorageManualReset<boolean>('memory/enabled', true)
+  const recallEnabled = useLocalStorageManualReset<boolean>('settings/memory/recall-enabled', true)
+  const recallTopN = useLocalStorageManualReset<number>('settings/memory/recall-top-n', 8)
+  const recallBudgetChars = useLocalStorageManualReset<number>('settings/memory/recall-budget-chars', 800)
   const entries = ref<MemoryEntry[]>([])
+  const postings = ref<Map<string, KeywordPosting[]>>(new Map())
   const { data: changed, post } = useBroadcastChannel<string[], string[]>({ name: 'airi:memory' })
   let pendingLoad = moveLegacyEntries()
     .catch(error => console.warn('[memory] Failed to move the entries from localStorage:', errorMessageFrom(error)))
@@ -66,10 +78,27 @@ export const useMemoryStore = defineStore('memory', () => {
     return pendingLoad.catch(() => {})
   }
 
-  /** Reads the entries again after a change, and tells the other windows. */
+  /**
+   * Reads the inverted index. An empty index over a non-empty fact store means the entries predate the index, or a
+   * rebuild never finished, so it is derived again from the entries that this window just read.
+   */
+  async function loadIndex() {
+    const stored = await memoryIndexRepo.list()
+    postings.value = stored.size === 0 && entries.value.length > 0
+      ? await rebuildMemoryIndex(entries.value)
+      : stored
+  }
+
+  /** Reads the entries again after a change, derives their index, and tells the other windows. */
   async function publish(ids: string[]) {
     await load()
+    postings.value = await rebuildMemoryIndex(entries.value)
     post(ids)
+  }
+
+  /** The entries that a card can see: its own, then the general ones. Only active entries reach a run. */
+  function activeFor(personaId: string) {
+    return entries.value.filter(entry => entry.status === 'active' && (!entry.persona || entry.persona === personaId))
   }
 
   /**
@@ -78,8 +107,9 @@ export const useMemoryStore = defineStore('memory', () => {
    */
   function indexFor(personaId: string) {
     const line = (entry: MemoryEntry) => `- ${entry.id}: ${entry.description}`
-    const own = entries.value.filter(entry => entry.persona === personaId).map(line)
-    const general = entries.value.filter(entry => !entry.persona).map(line)
+    const active = activeFor(personaId)
+    const own = active.filter(entry => entry.persona === personaId).map(line)
+    const general = active.filter(entry => !entry.persona).map(line)
     return [
       ...(own.length ? [`Your own:\n${own.join('\n')}`] : []),
       ...(general.length ? [`General:\n${general.join('\n')}`] : []),
@@ -88,7 +118,21 @@ export const useMemoryStore = defineStore('memory', () => {
 
   /** Reads an entry that the persona can see by its id: one of its own, or a general one. */
   function read(id: string, personaId: string) {
-    return entries.value.find(entry => entry.id === id && (!entry.persona || entry.persona === personaId))
+    return activeFor(personaId).find(entry => entry.id === id)
+  }
+
+  /**
+   * The entries that a message recalls, best first. An empty result means the message names no remembered fact, so the
+   * run receives no recalled block and its cacheable prefix stays as it was.
+   */
+  function recall(personaId: string, message: string) {
+    if (!enabled.value || !recallEnabled.value)
+      return []
+    return recallMemories(activeFor(personaId), postings.value, message, {
+      limit: recallTopN.value,
+      budgetChars: recallBudgetChars.value,
+      now: Date.now(),
+    })
   }
 
   /**
@@ -102,6 +146,60 @@ export const useMemoryStore = defineStore('memory', () => {
     const entry = await memoryRepo.write({ id: input.id, description: input.description.trim(), body }, personaId, Date.now())
     await publish([entry.id])
     return entry
+  }
+
+  /**
+   * Stores one extracted candidate on the card. `status` is pending while the owner has not accepted the candidate,
+   * and active when automatic extraction writes without confirmation.
+   */
+  async function storeCandidate(candidate: MemoryCandidate, personaId: string, status: MemoryStatus) {
+    const now = Date.now()
+    const entry: MemoryEntry = {
+      id: uuidv7(),
+      description: candidate.description.trim(),
+      body: candidate.body.trim(),
+      persona: personaId,
+      updatedAt: now,
+      kind: candidate.kind,
+      source: candidate.source,
+      confidence: candidate.confidence,
+      salience: 1,
+      createdAt: now,
+      lastAccessedAt: now,
+      accessCount: 0,
+      keywords: candidate.keywords,
+      status,
+    }
+    await memoryRepo.put(entry)
+    await publish([entry.id])
+    return entry
+  }
+
+  /** Accepts a pending candidate, so it reaches the index and recall. Only the owner accepts, in Settings. */
+  async function accept(entry: Pick<MemoryEntry, 'id'>) {
+    const stored = entries.value.find(candidate => candidate.id === entry.id)
+    if (!stored || stored.status !== 'pending')
+      return
+    // IndexedDB cannot clone a reactive proxy, and the stored entry holds one for its keyword list.
+    await memoryRepo.put({ ...toRaw(stored), status: 'active', updatedAt: Date.now() })
+    await publish([entry.id])
+  }
+
+  /**
+   * Counts a read of each entry. It does not tell the other windows, because a read changes no fact: they pick the
+   * counts up on their next change, and recall only uses them to rank entries against each other.
+   * A failed count resolves anyway, so the read tool still returns the entries that the model asked for.
+   */
+  async function recordAccess(ids: string[]) {
+    if (ids.length === 0)
+      return
+    try {
+      await memoryRepo.recordAccess(ids, Date.now())
+      await load()
+    }
+    catch (error) {
+      console.warn('[memory] Failed to count the reads:', errorMessageFrom(error))
+    }
   }
 
   /** Makes a card's memory general, so every card reads it. */
@@ -126,11 +224,16 @@ export const useMemoryStore = defineStore('memory', () => {
 
   async function resetState() {
     enabled.reset()
+    recallEnabled.reset()
+    recallTopN.reset()
+    recallBudgetChars.reset()
     await memoryRepo.clear()
+    await memoryIndexRepo.clear()
+    await memoryQueueRepo.clear()
     await publish([])
   }
 
-  async function restoreState(state: { enabled: boolean, entries: MemoryEntry[] }) {
+  async function restoreState(state: { enabled: boolean, entries: MemoryEntryRecord[] }) {
     await ready()
     enabled.value = state.enabled
     await memoryRepo.replace(state.entries)
@@ -138,18 +241,28 @@ export const useMemoryStore = defineStore('memory', () => {
   }
 
   function reload() {
-    void load().catch(error => console.warn('[memory] Failed to read the entries:', errorMessageFrom(error)))
+    void load()
+      .then(loadIndex)
+      .catch(error => console.warn('[memory] Failed to read the entries:', errorMessageFrom(error)))
   }
   watch(changed, reload)
   reload()
 
   return {
     enabled,
+    recallEnabled,
+    recallTopN,
+    recallBudgetChars,
     entries: computed(() => entries.value),
+    pendingCount: computed(() => entries.value.filter(entry => entry.status === 'pending').length),
     ready,
     indexFor,
     read,
+    recall,
     write,
+    storeCandidate,
+    accept,
+    recordAccess,
     makeGeneral,
     forget,
     remove,

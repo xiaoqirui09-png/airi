@@ -1156,6 +1156,10 @@ pages:
             verbose-json-unsupported: >-
               如果您的提供商没有返回 verbose_json 结果。置信度阈值将不会影响转录。
     memory-long-term:
+      auto_extract: 自动记下新的事实
+      auto_extract-description: 聊完一段之后，角色会再读一遍，把留下来的事实记好。用的是你选的那个聊天模型。
+      auto_extract_mode: 新事实
+      auto_extract_mode-description: 先问我，会等你点头才把新事实用进回复。直接存下，下一条回复就能用上。
       description: 长期记忆
       enable: 使用长期记忆
       enable-description: 角色会记住聊过的事。关掉后，它什么都不记得。
@@ -1166,9 +1170,20 @@ pages:
         forget: '忘掉{name}'
         make_general: '把{name}共享给所有角色'
         general: 共享的秘密
+        pending: 在等你点头。你接受之前，它不会出现在回复里。
+        accept: 接受
         entry:
           title: 记忆
           description: 每个角色的小秘密，和大家共享的秘密。
+      mode:
+        confirm: 先问我
+        auto: 直接存下
+      recall: 每条回复都带上记忆
+      recall-description: 角色只会读你这句话提到的记忆。一句话都没提到，就什么都不带。
+      recall_budget: 记忆字数上限
+      recall_budget-description: 带上的记忆最多这么多字。上限小一点，留给对话的空间就多一点。
+      recall_top_n: 每条消息最多带几条记忆
+      recall_top_n-description: 一条消息，角色最多读这么多条记忆。
       recipes:
         title: 配方
         empty: 还没有配方。

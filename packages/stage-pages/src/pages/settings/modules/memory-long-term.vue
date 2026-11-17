@@ -1,18 +1,47 @@
 <script setup lang="ts">
 import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
-import { FieldCheckbox } from '@proj-airi/ui'
+import { useMemoryExtractStore } from '@proj-airi/stage-ui/stores/memory-extract'
+import { FieldCheckbox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 const { t } = useI18n()
-const { enabled } = storeToRefs(useMemoryStore())
+const { enabled, recallEnabled, recallTopN, recallBudgetChars } = storeToRefs(useMemoryStore())
+const { autoExtractEnabled, autoExtractMode } = storeToRefs(useMemoryExtractStore())
+
+const KEY = 'settings.pages.modules.memory-long-term'
+
+const modeOptions = computed(() => [
+  { label: t(`${KEY}.mode.confirm`), value: 'confirm' as const, icon: 'i-solar:shield-check-linear' },
+  { label: t(`${KEY}.mode.auto`), value: 'auto' as const, icon: 'i-solar:bolt-linear' },
+])
 </script>
 
 <template>
   <div :class="['flex flex-col', 'gap-4']">
     <div :class="['rounded-xl', 'bg-neutral-100 dark:bg-neutral-900', 'p-4']">
-      <FieldCheckbox v-model="enabled" :label="t('settings.pages.modules.memory-long-term.enable')" :description="t('settings.pages.modules.memory-long-term.enable-description')" />
+      <FieldCheckbox v-model="enabled" :label="t(`${KEY}.enable`)" :description="t(`${KEY}.enable-description`)" />
+    </div>
+    <div v-if="enabled" :class="['flex flex-col', 'gap-4', 'rounded-xl', 'bg-neutral-100 dark:bg-neutral-900', 'p-4']">
+      <FieldCheckbox v-model="autoExtractEnabled" :label="t(`${KEY}.auto_extract`)" :description="t(`${KEY}.auto_extract-description`)" />
+      <template v-if="autoExtractEnabled">
+        <div :class="['flex flex-col', 'gap-2']">
+          <span :class="['text-sm font-medium']">{{ t(`${KEY}.auto_extract_mode`) }}</span>
+          <SelectTab v-model="autoExtractMode" :options="modeOptions" size="sm" />
+          <p :class="['text-xs', 'text-neutral-500 dark:text-neutral-400']">
+            {{ t(`${KEY}.auto_extract_mode-description`) }}
+          </p>
+        </div>
+      </template>
+    </div>
+    <div v-if="enabled" :class="['flex flex-col', 'gap-4', 'rounded-xl', 'bg-neutral-100 dark:bg-neutral-900', 'p-4']">
+      <FieldCheckbox v-model="recallEnabled" :label="t(`${KEY}.recall`)" :description="t(`${KEY}.recall-description`)" />
+      <template v-if="recallEnabled">
+        <FieldRange v-model="recallTopN" as="div" :min="1" :max="20" :step="1" :default-value="8" :label="t(`${KEY}.recall_top_n`)" :description="t(`${KEY}.recall_top_n-description`)" />
+        <FieldRange v-model="recallBudgetChars" as="div" :min="200" :max="4000" :step="100" :default-value="800" :label="t(`${KEY}.recall_budget`)" :description="t(`${KEY}.recall_budget-description`)" />
+      </template>
     </div>
     <RouterLink
       to="/settings/modules/memory-long-term-recipes"

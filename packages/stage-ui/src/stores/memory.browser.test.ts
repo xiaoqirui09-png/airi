@@ -121,9 +121,41 @@ describe('memory store', () => {
     const memory = createStore()
     await memory.ready()
 
+    // A record that predates the attributes reads as an active fact of the owner, at full confidence and salience,
+    // with its change time as its creation time. The move keeps the facts and loses nothing.
     expect(memory.entries).toEqual([
-      { id: expect.any(String), description: 'What the owner likes to be called.', body: 'Yumeka.', persona: 'airi', updatedAt: 10 },
-      { id: expect.any(String), description: 'How to answer.', body: 'Calm.', persona: undefined, updatedAt: 20 },
+      {
+        id: expect.any(String),
+        description: 'What the owner likes to be called.',
+        body: 'Yumeka.',
+        persona: 'airi',
+        updatedAt: 10,
+        kind: 'fact',
+        source: 'user',
+        confidence: 1,
+        salience: 1,
+        createdAt: 10,
+        lastAccessedAt: 10,
+        accessCount: 0,
+        keywords: [],
+        status: 'active',
+      },
+      {
+        id: expect.any(String),
+        description: 'How to answer.',
+        body: 'Calm.',
+        persona: undefined,
+        updatedAt: 20,
+        kind: 'fact',
+        source: 'user',
+        confidence: 1,
+        salience: 1,
+        createdAt: 20,
+        lastAccessedAt: 20,
+        accessCount: 0,
+        keywords: [],
+        status: 'active',
+      },
     ])
     expect(localStorage.getItem('memory/entries')).toBeNull()
   })

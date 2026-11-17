@@ -2,15 +2,17 @@ import type { MemoryEntry, MemoryWrite } from '../types/memory'
 
 import { describe, expect, it, vi } from 'vitest'
 
+import { normalizeMemoryEntry } from '../memory/attributes'
 import { composeMemoryPrompt, createMemoryTools, FORGET_MEMORY_TOOL_NAME, READ_MEMORY_TOOL_NAME, WRITE_MEMORY_TOOL_NAME } from './memory'
 
-const entry: MemoryEntry = { id: 'nickname-id', description: 'What the owner likes to be called.', body: 'Yumeka.', updatedAt: 0 }
+const entry = normalizeMemoryEntry({ id: 'nickname-id', description: 'What the owner likes to be called.', body: 'Yumeka.', updatedAt: 0 })
 
 function options() {
   return {
     read: vi.fn((id: string) => id === 'nickname-id' ? entry : undefined),
-    write: vi.fn(async (input: MemoryWrite): Promise<MemoryEntry> => ({ ...input, id: input.id ?? `${input.description}-id`, updatedAt: 0 })),
+    write: vi.fn(async (input: MemoryWrite): Promise<MemoryEntry> => normalizeMemoryEntry({ ...input, id: input.id ?? `${input.description}-id`, updatedAt: 0 })),
     forget: vi.fn(async () => true),
+    recordAccess: vi.fn(async () => {}),
   }
 }
 
@@ -24,6 +26,8 @@ describe('memory tools', () => {
     expect(tools.map(tool => tool.function.name)).toEqual([READ_MEMORY_TOOL_NAME, WRITE_MEMORY_TOOL_NAME, FORGET_MEMORY_TOOL_NAME])
     // One call reads or writes every entry that the turn needs.
     expect(await read!.execute({ ids: ['nickname-id', 'unknown'] }, call)).toBe('nickname-id (general): Yumeka.\nNo memory entry with id "unknown".')
+    // Only a resolved entry counts as a read, so recall ranks the entries that a run opens.
+    expect(bound.recordAccess).toHaveBeenCalledWith(['nickname-id'])
     // An id changes that entry. A null id adds an entry, and the store gives it an id.
     expect(await write!.execute({ entries: [{ id: 'nickname-id', description: 'Yumeka.', body: 'Yumeka.' }, { id: null, description: 'Tokyo.', body: 'Tokyo.' }] }, call)).toBe('Saved memory "nickname-id".\nSaved memory "Tokyo.-id".')
     expect(bound.write).toHaveBeenNthCalledWith(1, { id: 'nickname-id', description: 'Yumeka.', body: 'Yumeka.' })
@@ -49,5 +53,6 @@ describe('memory tools', () => {
     expect(composeMemoryPrompt('')).toContain('Most turns save nothing.')
     expect(composeMemoryPrompt('')).toContain('Never save what a recipe already holds')
     expect(composeMemoryPrompt('')).toContain('The memory index is empty.')
+    expect(composeMemoryPrompt('')).toContain('A message can carry a recalled block')
   })
 })

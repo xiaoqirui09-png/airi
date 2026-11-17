@@ -50,7 +50,7 @@ import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
 import { useLlmToolsetPromptsStore } from './ai/chat-llm/toolset-prompts'
 import { useAuthStore } from './auth'
-import { createMinecraftContext, createRuntimePromptContext, createUserAccountContext } from './chat/context-providers'
+import { createMemoryRecallContext, createMinecraftContext, createRuntimePromptContext, createUserAccountContext, MEMORY_RECALL_CONTEXT_ID } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { describeChatImages, replaceToolResultImages } from './chat/image-projection'
 import { composeRecipeSpacePrompt, composeSystemPrompt } from './chat/prompt-recipe'
@@ -59,6 +59,7 @@ import { useChatSessionStore } from './chat/session-store'
 import { useChatStreamStore } from './chat/stream-store'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useMemoryStore } from './memory'
+import { useMemoryExtractStore } from './memory-extract'
 import { useAiriCardStore } from './modules/airi-card'
 import { useAutonomousArtistryStore } from './modules/artistry-autonomous'
 import { useConsciousnessStore } from './modules/consciousness'
@@ -284,6 +285,7 @@ export const useChatStore = defineStore('chat', () => {
   const cardStore = useAiriCardStore()
   const recipes = useRecipesStore()
   const memory = useMemoryStore()
+  const memoryExtract = useMemoryExtractStore()
 
   /** The persona of a session. A session without one uses the selected card. */
   function personaOf(sessionId: string) {
@@ -640,7 +642,7 @@ export const useChatStore = defineStore('chat', () => {
     const persona = personaOf(sessionId)
     const sourceTools = async () => [
       ...(typeof tools === 'function' ? await tools() ?? [] : tools ?? []),
-      ...memory.enabled ? await createMemoryTools({ read: id => memory.read(id, persona), write: entry => memory.write(entry, persona), forget: id => memory.forget(id, persona) }) : [],
+      ...memory.enabled ? await createMemoryTools({ read: id => memory.read(id, persona), write: entry => memory.write(entry, persona), forget: id => memory.forget(id, persona), recordAccess: ids => memory.recordAccess(ids) }) : [],
     ]
     // A recipe's own session runs only that recipe. It cannot start recipes, save them, or choose silence.
     if (isTaskSession(sessionId))
@@ -1138,6 +1140,29 @@ export const useChatStore = defineStore('chat', () => {
       if (artistry?.autonomousEnabled && artistry?.autonomousTarget === 'assistant')
         void artistryAutonomousStore.runArtistTask(messageText, toProviderHistory(sessionMessages))
     },
+  })
+
+  // Recall runs before composition, so the block reaches the last user message after the cacheable prefix instead of
+  // changing the system prompt. The registry is global, so a message that recalls nothing removes the previous block:
+  // another session's memories must not reach this one.
+  runtime.hooks.onBeforeMessageComposed(async (message, context) => {
+    const recalled = createMemoryRecallContext(memory.recall(personaOf(context.sessionId), message))
+    if (recalled)
+      chatContext.ingestContextMessage(recalled)
+    else
+      chatContext.removeContextWriter(MEMORY_RECALL_CONTEXT_ID)
+  })
+
+  // A background task reports to its recipe, so its turns hold no lasting fact about the owner. The reply never waits
+  // for the queue: a failed write only loses the extraction of this turn.
+  runtime.hooks.onChatTurnComplete(async (chat, context) => {
+    if (isTaskSession(context.sessionId))
+      return
+    void memoryExtract.enqueueTurn(personaOf(context.sessionId), {
+      userText: extractMessageText(context.message),
+      assistantText: chat.outputText,
+      toolCalls: chat.output.slices.flatMap(slice => slice.type === 'tool-call' ? [slice.toolCall.toolName] : []),
+    }).catch(error => console.warn('[memory] Failed to queue the turn:', errorMessageFrom(error)))
   })
 
   // One request owns preparation and generation. Cancellation cannot miss asynchronous startup.

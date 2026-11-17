@@ -61,9 +61,11 @@ const redundantChatAnalyticsMocks = vi.hoisted(() => ({
 }))
 const ingestContextMessageMock = vi.fn()
 const getContextsSnapshotMock = vi.fn()
+const removeContextWriterMock = vi.fn()
 const createRuntimePromptContextMock = vi.fn()
 const createMinecraftContextMock = vi.fn()
 const createUserAccountContextMock = vi.fn()
+const createMemoryRecallContextMock = vi.fn()
 const persistSessionMessagesMock = vi.fn()
 const forkSessionMock = vi.fn()
 const createSessionMock = vi.fn()
@@ -96,8 +98,10 @@ vi.mock('../composables', () => ({
 
 vi.mock('./chat/context-providers', () => ({
   createMinecraftContext: () => createMinecraftContextMock(),
+  createMemoryRecallContext: (hits: unknown[]) => createMemoryRecallContextMock(hits),
   createRuntimePromptContext: (prompt: string) => createRuntimePromptContextMock(prompt),
   createUserAccountContext: () => createUserAccountContextMock(),
+  MEMORY_RECALL_CONTEXT_ID: 'system:airi-memory-recall',
 }))
 
 vi.mock('vue-i18n', () => ({
@@ -114,12 +118,15 @@ vi.mock('./chat/context-store', () => ({
     dispose: vi.fn(),
     ingestContextMessage: ingestContextMessageMock,
     getContextsSnapshot: getContextsSnapshotMock,
+    removeContextWriter: removeContextWriterMock,
   }),
 }))
 
 // IndexedDB is a browser boundary. Browser tests exercise the real sticker and recipe repositories.
 vi.mock('../database/repos/chat-assets.repo')
 vi.mock('../database/repos/memory.repo')
+vi.mock('../database/repos/memory-index.repo')
+vi.mock('../database/repos/memory-queue.repo')
 vi.mock('../database/repos/recipes.repo')
 
 vi.mock('../database/repos/stickers.repo', () => ({
@@ -338,6 +345,9 @@ describe('chat store contract', () => {
     createRuntimePromptContextMock.mockReturnValue(undefined)
     createMinecraftContextMock.mockReset()
     createMinecraftContextMock.mockReturnValue(undefined)
+    createMemoryRecallContextMock.mockReset()
+    createMemoryRecallContextMock.mockReturnValue(undefined)
+    removeContextWriterMock.mockReset()
     persistSessionMessagesMock.mockReset()
     forkSessionMock.mockReset()
     loadSessionMock.mockReset().mockResolvedValue(true)

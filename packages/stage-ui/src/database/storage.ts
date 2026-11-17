@@ -24,6 +24,10 @@ storage.mount('device', indexedDbDriver({ dbName: 'localforage', storeName: 'key
 storage.mount('chat-assets', indexedDbDriver({ dbName: 'airi-chat-assets', storeName: 'assets' }))
 /** Long-term memory, one record for each entry, keyed by the entry ID. */
 storage.mount('memory', indexedDbDriver({ dbName: 'airi-memory', storeName: 'entries' }))
+/** The inverted index of long-term memory, one record for each keyword, keyed by the normalized keyword. */
+storage.mount('memory-index', indexedDbDriver({ dbName: 'airi-memory-index', storeName: 'keywords' }))
+/** Finished chat turns that wait for memory extraction, one record for each turn, keyed by the task ID. */
+storage.mount('memory-queue', indexedDbDriver({ dbName: 'airi-memory-queue', storeName: 'tasks' }))
 /** Recipes, one record for each recipe, keyed by the recipe ID. */
 storage.mount('recipes', indexedDbDriver({ dbName: 'airi-recipes', storeName: 'recipes' }))
 /** The sticker library. Entries and images have their own key prefixes. */

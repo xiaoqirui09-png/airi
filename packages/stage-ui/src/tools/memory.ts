@@ -36,6 +36,7 @@ export function composeMemoryPrompt(index: string) {
     '',
     'Long-term memory. You keep it yourself. Each index line gives the id of one remembered fact, and states the fact or when it matters.',
     `Read entries with ${READ_MEMORY_TOOL_NAME} when they matter for your reply. An index line that already states the fact needs no read.`,
+    'A message can carry a recalled block that lists the entries it names. Read only the entries whose body your reply needs.',
     `Save with ${WRITE_MEMORY_TOOL_NAME} only when someone asks you to remember something, or states a lasting fact. Most turns save nothing.`,
     'One fact per entry. To update an entry, write it with its id instead of adding a near copy. Never save what a recipe already holds, your own rules, codes, passwords, or secrets.',
     `Forget an entry by its id with ${FORGET_MEMORY_TOOL_NAME} when it turns out wrong or someone asks. General entries belong to the owner, so you cannot change or forget them.`,
@@ -48,6 +49,8 @@ interface CreateMemoryToolsOptions {
   read: (id: string) => MemoryEntry | undefined
   write: (entry: MemoryWrite) => Promise<MemoryEntry | undefined>
   forget: (id: string) => Promise<boolean>
+  /** Counts the reads, so recall ranks the entries that a run uses against the ones it never opens. */
+  recordAccess: (ids: string[]) => Promise<void>
 }
 
 /** Creates the memory tools for one run. The run reads its card's memories and the general ones, and changes only its card's. */
@@ -61,10 +64,16 @@ export async function createMemoryTools(options: CreateMemoryToolsOptions): Prom
         const parsed = safeParse(readParameters, rawInput)
         if (!parsed.success)
           return 'Give at least one entry id from the memory index.'
-        return parsed.output.ids.map((id) => {
+        const lines: string[] = []
+        const readIds: string[] = []
+        for (const id of parsed.output.ids) {
           const entry = options.read(id)
-          return entry ? `${entry.id} (${entry.persona ? 'yours' : 'general'}): ${entry.body}` : `No memory entry with id "${id}".`
-        }).join('\n')
+          if (entry)
+            readIds.push(entry.id)
+          lines.push(entry ? `${entry.id} (${entry.persona ? 'yours' : 'general'}): ${entry.body}` : `No memory entry with id "${id}".`)
+        }
+        await options.recordAccess(readIds)
+        return lines.join('\n')
       },
     }),
     rawTool({

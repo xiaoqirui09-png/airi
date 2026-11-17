@@ -3,7 +3,7 @@ import type { MemoryEntry } from '@proj-airi/stage-ui/types/memory'
 
 import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
-import { GhostButton } from '@proj-airi/ui'
+import { Button, GhostButton } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -64,6 +64,11 @@ function remove(entry: MemoryEntry) {
             <p :class="['pt-1', 'text-sm', 'whitespace-pre-wrap break-words']">
               {{ entry.body }}
             </p>
+            <div v-if="entry.status === 'pending'" :class="['flex flex-wrap items-center', 'gap-3', 'pt-2', 'text-xs', 'text-neutral-500 dark:text-neutral-400']">
+              <span :class="['i-solar:shield-check-linear', 'shrink-0', 'text-base']" aria-hidden="true" />
+              <span :class="['min-w-0 flex-1']">{{ t(`${KEY}.pending`) }}</span>
+              <Button size="sm" variant="primary" :label="t(`${KEY}.accept`)" @click="memory.accept(entry)" />
+            </div>
           </div>
           <GhostButton
             v-if="entry.persona"
