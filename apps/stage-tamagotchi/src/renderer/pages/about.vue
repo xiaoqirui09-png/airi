@@ -503,7 +503,7 @@ onMounted(() => {
               />
               <a
                 v-else-if="updateState.status === 'manual-install-required'"
-                href="https://github.com/moeru-ai/airi/releases"
+                href="https://github.com/xiaoqirui09-png/airi/releases"
                 target="_blank"
                 rel="noopener noreferrer"
               >

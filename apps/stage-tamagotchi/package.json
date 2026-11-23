@@ -236,7 +236,7 @@
     "zod": "catalog:"
   },
   "build": {
-    "appId": "ai.moeru.airi",
+    "appId": "ai.moeru.airi.myairi",
     "extends": "electron-builder.config.ts"
   }
 }

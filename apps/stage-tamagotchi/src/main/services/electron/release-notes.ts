@@ -5,8 +5,8 @@ import { nullish, object, safeParse, string } from 'valibot'
 
 import { channelOfVersion } from '../../../shared/update-channels'
 
-const repositoryUrl = 'https://github.com/moeru-ai/airi'
-const releaseApiUrl = 'https://api.github.com/repos/moeru-ai/airi/releases/tags'
+const repositoryUrl = 'https://github.com/xiaoqirui09-png/airi'
+const releaseApiUrl = 'https://api.github.com/repos/xiaoqirui09-png/airi/releases/tags'
 
 const releaseSchema = object({
   body: nullish(string()),

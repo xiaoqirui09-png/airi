@@ -59,7 +59,7 @@ import { getElectronMainDirname } from '../../../libs/electron/location'
 type GodotStageProcess = ChildProcessByStdio<null, Readable, Readable>
 type MainContext = ReturnType<typeof createContext>['context']
 
-const DEFAULT_GODOT_REMOTE_DEBUG_URI = 'tcp://127.0.0.1:6007'
+const DEFAULT_GODOT_REMOTE_DEBUG_URI = 'tcp://127.0.0.1:6008'
 
 interface Deferred<T> {
   promise: Promise<T>

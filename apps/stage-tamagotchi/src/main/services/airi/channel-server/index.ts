@@ -75,7 +75,7 @@ interface ServerChannelCertificateVerifyRequest {
 }
 
 function getServerChannelPort() {
-  return env.SERVER_CHANNEL_PORT ? Number.parseInt(env.SERVER_CHANNEL_PORT) : 6121
+  return env.SERVER_CHANNEL_PORT ? Number.parseInt(env.SERVER_CHANNEL_PORT) : 6122
 }
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])

@@ -42,8 +42,8 @@ else {
 }
 
 export default {
-  appId: 'ai.moeru.airi',
-  productName: 'AIRI',
+  appId: 'ai.moeru.airi.myairi',
+  productName: 'MyAiRi',
   directories: {
     output: 'dist',
     buildResources: 'build',
@@ -124,21 +124,21 @@ export default {
     // CI names each build in `ERGOSPHERE_IT_VERSION`, for example `0.13.1-nightly.45.1bf946f`. The installer and its
     // electron-updater feed must have the version of the installer manifest, so the app takes the installer.
     ...(env.ERGOSPHERE_IT_VERSION ? { version: env.ERGOSPHERE_IT_VERSION } : {}),
-    name: 'ai.moeru.airi',
+    name: 'ai.moeru.airi.myairi',
     main: 'out/launcher/index.mjs',
-    homepage: 'https://airi.moeru.ai/docs/',
-    repository: 'https://github.com/moeru-ai/airi',
+    homepage: 'https://github.com/xiaoqirui09-png/airi',
+    repository: 'https://github.com/xiaoqirui09-png/airi',
     license: 'MIT',
   },
   win: {
-    executableName: 'airi',
+    executableName: 'myairi',
     // NOTICE: Keep `channel: 'latest-${arch}'` for architecture-aware updater metadata.
     // electron-builder expands `${arch}` at publish-time (for example: `latest-x64`, `latest-arm64`),
     // and electron-updater later consumes that expanded channel to resolve platform-specific *.yml files.
     // This prevents cross-arch lookups such as arm64 clients reading x64 metadata.
     publish: {
       provider: 'github',
-      owner: 'moeru-ai',
+      owner: 'xiaoqirui09-png',
       repo: 'airi',
       channel: 'latest-${arch}',
     },
@@ -148,7 +148,7 @@ export default {
     shortcutName: '${productName}',
     uninstallDisplayName: '${productName}',
     createDesktopShortcut: 'always',
-    deleteAppDataOnUninstall: true,
+    deleteAppDataOnUninstall: false,
     oneClick: false,
     allowToChangeInstallationDirectory: true,
     runAfterFinish: true,
@@ -160,7 +160,7 @@ export default {
     // to architecture-specific update feeds on macOS (for example: `latest-x64-mac.yml`, `latest-arm64-mac.yml`).
     publish: {
       provider: 'github',
-      owner: 'moeru-ai',
+      owner: 'xiaoqirui09-png',
       repo: 'airi',
       // NOTICE: `channel: 'latest-${arch}'` matters because electron-builder expands
       // `${arch}` before it writes any publish metadata, and electron-updater later
@@ -258,7 +258,7 @@ export default {
     // NOTICE: Same channel rule as Windows/macOS. Keep `${arch}` to avoid x64/arm64 feed collisions on Linux.
     publish: {
       provider: 'github',
-      owner: 'moeru-ai',
+      owner: 'xiaoqirui09-png',
       repo: 'airi',
       channel: 'latest-${arch}',
     },

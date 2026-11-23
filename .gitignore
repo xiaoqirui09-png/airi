@@ -50,6 +50,11 @@ coverage/
 
 # Build
 out/
+# Keep the Godot packaging placeholder so electron-builder always finds its extraResources source.
+!engines/stage-tamagotchi-godot/out/
+!engines/stage-tamagotchi-godot/out/win/
+!engines/stage-tamagotchi-godot/out/win/.gitkeep
+!engines/stage-tamagotchi-godot/out/win/README.txt
 bundle/
 flatpak/
 flatpak-repo/
