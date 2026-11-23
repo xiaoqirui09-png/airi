@@ -1167,6 +1167,9 @@ pages:
       decay_half_life-description: 经过这么多天没人提起，一段记忆就只剩一半份量。
       enable: 使用长期记忆
       enable-description: 角色会记住聊过的事。关掉后，它什么都不记得。
+      settings:
+        title: 长期记忆设置
+        description: 决定角色记什么、怎么记、又怎么想起来。
       audit:
         title: 记忆活动
         description: 角色自己存下、合并或替换的每一条事实。你可以撤销任何一次改动。
